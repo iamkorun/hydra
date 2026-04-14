@@ -74,6 +74,7 @@ For long-lived remote sessions (nc, gdb), use tmux per `.claude/skills/pwn/tmux-
 - `.claude/skills/pwn/rop-chains.md` — ROPgadget workflow, stack pivot, ret2csu
 - `.claude/skills/pwn/format-string.md` — `%n` writes, arbitrary read, GOT overwrite
 - `.claude/skills/pwn/heap-exploitation.md` — glibc 2.31–2.39+ primitives: tcache poisoning (safe-linking bypass), fastbin dup, unsorted-bin leak, UAF/double-free, FSOP (house_of_apple2/kiwi/cat), IO_FILE arb r/w, end-to-end skeleton
+- `.claude/skills/pwn/ret2dlresolve.md` — resolving `system` without a libc leak via `_dl_runtime_resolve`; pwntools `Ret2dlresolvePayload`; 32 vs 64-bit recipes, alignment / IFUNC / version_check traps, when to pivot to libc-brute / SIGROP / static-pie syscall-ROP
 
 # Exploit templates reference
 

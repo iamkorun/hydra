@@ -71,6 +71,7 @@ Automated scanners are powerful but noisy — running sqlmap for 10 minutes when
 - `.claude/skills/web/ssrf.md` — URL-fetch sinks, cloud metadata (AWS IMDSv1/v2, GCP, Azure), IPv4 obfuscation + DNS rebinding + userinfo bypass, gopher for Redis/Memcached/FastCGI RCE, blind SSRF via interactsh/self-hosted OOB, PDF-generator chromium SSRF
 - `.claude/skills/web/lfi-rce.md` — detect→disclose→RCE chain: php filter source disclosure, synacktiv filter-chain RCE (universal, even without `allow_url_include`), log poisoning (Apache/Nginx/SSH/mail/procfs), `/usr/share/php/pearcmd.php`, session-file + upload race; also Python/Node/Ruby/Java sinks and full traversal-bypass table
 - `.claude/skills/web/deserialization.md` — per-language gadget playbooks: Python (`__reduce__` + opcode reference), PHP phpggc + phar, Java ysoserial (CC1-7 + Spring + Groovy + ROME + URLDNS + classpath enum), Node `node-serialize`/serialize-javascript, Ruby Marshal/YAML, .NET BinaryFormatter + ViewState + Json.NET `$type`
+- `.claude/skills/web/prototype-pollution.md` — Node.js / JS pollution primitive → sinks: XSS via templating defaults, SSRF via axios/node-fetch option merge, RCE via spawn env/shell + NODE_OPTIONS + EJS/Handlebars. Detection payloads, bypass cookbook (`constructor.prototype`, Express query flatten), playwright-verified client-side chains
 
 # Exploit templates reference
 

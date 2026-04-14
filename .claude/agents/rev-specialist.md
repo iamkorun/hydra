@@ -49,6 +49,7 @@ Ghidra + angr are for challenges that genuinely need decompilation or symbolic e
 # Skills reference
 
 - `.claude/skills/rev/rev-methodology.md` — layered workflow (file → strings → ltrace → r2 → ghidra → angr → patch). Covers non-x86 formats (PyInstaller, JVM, .NET, WASM, Go, Rust, UPX).
+- `.claude/skills/rev/anti-debug.md` — anti-debug / anti-analysis bypass: detect via strings/ltrace/strace, static patch with r2/LIEF, runtime bypass via LD_PRELOAD shim + gdb scripts, symex with angr/Qiling/unicorn. Catalog of 13 detection techniques (ptrace, TracerPid, RDTSC, self-checksum, SIGTRAP hijack, env-var, parent-pid, syscall-timing, VM detect, PLT integrity, stack-canary guard, inode/argv checks, dlsym runtime).
 
 # Exploit templates reference
 

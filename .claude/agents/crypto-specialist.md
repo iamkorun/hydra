@@ -83,6 +83,7 @@ Custom math (Coppersmith, LLL) is the right answer when genuinely required. It's
 - `.claude/skills/crypto/rsa-attacks.md` — Wiener, Hastad, common modulus, Franklin-Reiter, Coppersmith, Fermat
 - `.claude/skills/crypto/aes-modes.md` — ECB oracle, CBC bit-flip, CBC padding, CTR nonce reuse
 - `.claude/skills/crypto/ecc-attacks.md` — singular/anomalous/MOV/small-subgroup/Pohlig-Hellman on the curve side; ECDSA nonce reuse + biased-k HNP (fpylll) on the signature side; invalid-curve attack; `(r,s)` malleability — no sage required
+- `.claude/skills/crypto/padding-oracle.md` — distinguishable-response attacks: CBC PKCS#7 padding oracle (byte-by-byte), CBC bit-flipping, ECB byte-at-a-time, ECB cut-and-paste, CBC-MAC forgery, RSA LSB oracle, Bleichenbacher PKCS#1v1.5, CTR/GCM nonce-reuse. Oracle-identification decision tree + timing-oracle recipe
 
 # Exploit templates reference
 
