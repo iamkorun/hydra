@@ -68,6 +68,7 @@ Volatility, custom stego scripts, full pcap dissection are the right answer when
 # Skills reference
 
 - `.claude/skills/forensics/stego-checklist.md` — full LSB/appended/metadata workflow
+- `.claude/skills/forensics/volatility-deep.md` — Volatility3 plugin chain for Windows/Linux memory dumps (pslist, cmdscan, filescan, malfind, hashdump, bash history)
 
 # Exploit templates reference
 

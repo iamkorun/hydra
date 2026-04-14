@@ -26,34 +26,70 @@ multi-subtask challenge.
 
 ## How to decompose
 
-Write your plan in `./work/plan.md` before running any solve code.
+Write your plan in `./work/plan.md` before running any solve code and
+**update it in place** as you make progress — the file is persistent
+scratch memory across tool calls, re-dispatches, and sessions.
+
+Use PentestGPT-style hierarchical task status (`[ ] / [x] / [~] / [-]`)
+with dotted outline numbering. Status markers:
+- `[ ]` to-do: not started
+- `[~]` in progress: started, not finished
+- `[x]` completed: success criteria met
+- `[-]` skipped or not applicable: the evidence ruled this path out (keep
+  it for the record — don't delete — so you don't retry it)
+
 Structure:
 
 ```markdown
 # Plan: <challenge-name>
 
 ## Overall goal
-<one-liner of the flag target>
+<one-liner of the flag target — e.g., "recover input string that makes
+./bin print the flag on stdout">
 
-## Subtasks
-1. **S1 — <name>**: <what you're trying to achieve>
-   - Success check: <how you'll know this one is done>
-   - Approach: <what you'll try first>
-2. **S2 — <name>**: ...
-   - Depends on: S1
+## Task tree
 
-## Budget per subtask
-- S1: ~10 min or 6 failed attempts
-- S2: ~15 min
-- ...
+- [x] 1. Recon
+  - [x] 1.1. `file ./challenge/*`  → ELF x86_64, stripped, not PIE
+  - [x] 1.2. `strings ./challenge/bin | grep flag`  → no plaintext flag
+  - [x] 1.3. `ltrace ./challenge/bin <<<AAAA`  → calls `strcmp` and `xor_block`
+- [~] 2. Reverse the check
+  - [x] 2.1. Identify `xor_block` address  → 0x401340
+  - [~] 2.2. Determine xor key  → partial: first 4 bytes are `DEAD`
+  - [ ] 2.3. Recover full key by solving constraints
+- [ ] 3. Construct input
+  - [ ] 3.1. Apply key to expected stored string
+  - [ ] 3.2. Run ./bin with input, confirm flag on stdout
+- [-] 4. Patch `jne` (fallback)   # skipped — key recovery cleaner
 
-## Falling back
-If Sk is stuck past its budget, re-read the challenge prompt — it often
-hints at the missing subtask.
+## Budget
+- Each leaf: ~10 min or 6 failed attempts. If blown, mark `[-]` with reason
+  and pick an alternate path.
+
+## Chosen-task block (for handoff / self-reminder)
+
+-----
+Task: determine the last 12 bytes of the xor key
+Command: `r2 -qc 'pdf @ 0x401340' ./challenge/bin` then read the loop constants
+Expected outcome: a 16-byte constant array used in the xor; if a branch
+                  compares against a stored ciphertext, derive the key by
+                  reversing the xor against the known plaintext prefix.
+-----
 ```
 
-Then work through them one at a time. Commit the plan to `./work/plan.md`
-so later iterations (re-dispatches by the triage agent) see your decomp.
+Keep the **chosen-task block** at the bottom (three lines bracketed by
+`-----` separators) so anyone re-reading the plan knows the next concrete
+action. PentestGPT uses this exact contract (`legacy/.../prompt_class_v2.py`
+`process_results`).
+
+Update the plan whenever you:
+- complete a leaf (flip `[ ]` → `[x]`)
+- pivot to a new leaf (update the chosen-task block)
+- discover a new subtask (insert it at the right depth)
+- prove a path infeasible (`[ ]` → `[-]` with a short reason)
+
+Stale plans are worse than no plans. If the plan doesn't reflect reality,
+fix it before the next tool call.
 
 ## Why this helps
 

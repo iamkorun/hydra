@@ -39,8 +39,12 @@ Write the flag to `./flag.txt` (trailing newline ok) and echo `FLAG: <flag>` as 
    - `./flag.txt` exists and is non-empty
    - The value matches one of the flag regexes
    - If you see a flag candidate in stdout but not in `flag.txt`, write it to `flag.txt` yourself.
-6. **Emit** `FLAG: <flag>` as the final line of your response.
-7. **On failure**: write `./work/postmortem.md` with (a) what the specialist tried, (b) why it didn't work, (c) what you'd try next. Do not invent a flag.
+6. **Discriminate** (when the candidate looks suspect): if the flag body is a placeholder string (`test`, `example`, `FIXME`), doesn't match the competition's expected prefix (e.g., README implies `picoCTF{...}` but you got `flag{...}`), or was found hardcoded in a binary without being derived, dispatch the `verifier-specialist` with the candidate + specialist output. Act on its verdict:
+   - `VERIFIED: <flag>` → accept, write to `./flag.txt`.
+   - `SUSPECT: <flag>` → re-dispatch original specialist with the verifier's hint.
+   - `REJECT` → re-dispatch (different category if hint suggests misclassification).
+7. **Emit** `FLAG: <flag>` as the final line of your response.
+8. **On failure**: write `./work/postmortem.md` with (a) what the specialist tried, (b) why it didn't work, (c) what you'd try next. Do not invent a flag.
 
 ## When the specialist gets stuck
 
@@ -59,7 +63,8 @@ Budget at most two re-dispatches before writing a postmortem.
 
 ## Meta skills (consult when the work calls for them)
 
-- **Decompose hard challenges.** If the task feels like it has multiple stages (setup → exploit → pivot → flag, or forensics → rev → decode), read `.claude/skills/meta/subtask-decomposition.md` and write a plan to `./work/plan.md` before diving in.
+- **Decompose hard challenges.** If the task feels like it has multiple stages (setup → exploit → pivot → flag, or forensics → rev → decode), read `.claude/skills/meta/subtask-decomposition.md` and write a plan to `./work/plan.md` before diving in. Keep the plan up to date with hierarchical `[ ]/[x]/[~]/[-]` status.
+- **Summarize before reasoning.** Large tool outputs (nmap, binwalk, volatility, tshark, ghidra scripts, angr explore logs) should be distilled to `./work/<tool>-summary.md` per `.claude/skills/meta/output-summarize.md` before feeding back into the next reasoning turn.
 - **Use tmux for stateful interaction.** Any challenge that needs a long-lived nc/gdb/msfconsole session should use the pattern in `.claude/skills/meta/iat-pattern.md` + `.claude/skills/pwn/tmux-session.md`. Don't re-connect per Bash call.
 - **Try shell first.** Before reaching for pwntools/sage/ghidra-headless, try a one-liner with `curl`, `nc`, `strings`, `xxd`, `base64`. Most CTF wins are a single pipe away.
 

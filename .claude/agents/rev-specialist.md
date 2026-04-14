@@ -48,7 +48,7 @@ Ghidra + angr are for challenges that genuinely need decompilation or symbolic e
 
 # Skills reference
 
-(No skills in P1 for rev — specialist handles its own.)
+- `.claude/skills/rev/rev-methodology.md` — layered workflow (file → strings → ltrace → r2 → ghidra → angr → patch). Covers non-x86 formats (PyInstaller, JVM, .NET, WASM, Go, Rust, UPX).
 
 # Exploit templates reference
 
