@@ -1,0 +1,12 @@
+pwntools==4.13.*
+z3-solver==4.13.*
+angr==9.2.*
+pycryptodome==3.20.*
+gmpy2==2.2.*
+sympy==1.13.*
+requests==2.32.*
+beautifulsoup4==4.12.*
+pyjwt==2.10.*
+r2pipe==1.9.*
+ROPgadget==7.6
+volatility3==2.8.*
