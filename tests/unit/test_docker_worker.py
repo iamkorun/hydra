@@ -114,3 +114,59 @@ async def test_command_contains_expected_args(tmp_path, patch_subprocess):
     assert any("claude" in c for c in cmd)
     assert "--model" in cmd
     assert "claude-opus-4-6" in cmd
+
+
+async def test_credentials_dir_mounts_at_root_claude(tmp_path, patch_subprocess):
+    """When credentials_dir is provided, it's bind-mounted at /root/.claude:ro
+    and ANTHROPIC_API_KEY is NOT passed via -e."""
+    wd = tmp_path / "runs" / "x"
+    (wd / "logs").mkdir(parents=True)
+    creds = tmp_path / "host_claude"
+    creds.mkdir()
+    (creds / "credentials.json").write_text("{}")
+
+    await run_worker(
+        name="x", workdir=wd, image="hydra-worker",
+        credentials_dir=creds, model="m", timeout_s=30,
+        container_cpus=1, container_memory="1g",
+        prompt_volumes={},
+    )
+    cmd = patch_subprocess["cmd"]
+    joined = " ".join(str(c) for c in cmd)
+
+    # Credentials dir bind-mounted at /root/.claude:ro
+    assert f"{creds.resolve()}:/root/.claude:ro" in joined
+    # No API key env var when credentials_dir is used
+    assert not any(str(c).startswith("ANTHROPIC_API_KEY=") for c in cmd)
+
+
+async def test_requires_either_creds_or_key(tmp_path, patch_subprocess):
+    """Passing neither credentials_dir nor api_key must raise."""
+    wd = tmp_path / "runs" / "x"
+    (wd / "logs").mkdir(parents=True)
+    with pytest.raises(ValueError, match="credentials_dir.*api_key"):
+        await run_worker(
+            name="x", workdir=wd, image="hydra-worker",
+            model="m", timeout_s=30,
+            container_cpus=1, container_memory="1g",
+            prompt_volumes={},
+        )
+
+
+async def test_credentials_preferred_over_api_key(tmp_path, patch_subprocess):
+    """If both are supplied, credentials_dir wins and api_key is ignored."""
+    wd = tmp_path / "runs" / "x"
+    (wd / "logs").mkdir(parents=True)
+    creds = tmp_path / "host_claude"
+    creds.mkdir()
+
+    await run_worker(
+        name="x", workdir=wd, image="hydra-worker",
+        credentials_dir=creds, api_key="sk-backup",
+        model="m", timeout_s=30,
+        container_cpus=1, container_memory="1g",
+        prompt_volumes={},
+    )
+    cmd = patch_subprocess["cmd"]
+    assert not any("ANTHROPIC_API_KEY=" in str(c) for c in cmd)
+    assert any("/root/.claude:ro" in str(c) for c in cmd)

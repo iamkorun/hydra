@@ -15,10 +15,11 @@ class OrchestratorConfig:
     timeout_s: float
     model: str
     image: str
-    api_key: str
     runs_dir: Path
     failures_dir: Path
     prompt_volumes: dict[Path, str]
+    credentials_dir: Path | None = None
+    api_key: str | None = None
     container_cpus: int = 2
     container_memory: str = "8g"
     skip_names: set[str] = field(default_factory=set)
@@ -52,6 +53,7 @@ class Orchestrator:
                 name=c.name,
                 workdir=wd,
                 image=self.cfg.image,
+                credentials_dir=self.cfg.credentials_dir,
                 api_key=self.cfg.api_key,
                 model=self.cfg.model,
                 timeout_s=self.cfg.timeout_s,
@@ -65,11 +67,11 @@ class Orchestrator:
                 status, reason = "timeout", f"wall-clock timeout after {self.cfg.timeout_s}s"
             elif flag:
                 status, reason = "solved", None
+            elif wr.exit_code != 0:
+                status = "error"
+                reason = (wr.stderr[-1024:] if wr.stderr else f"worker exited {wr.exit_code}")
             else:
-                status, reason = "failed", (
-                    wr.stderr[-1024:] if wr.exit_code != 0 and wr.stderr
-                    else "no flag recovered from stdout or flag.txt"
-                )
+                status, reason = "failed", "no flag recovered from stdout or flag.txt"
 
             r = Result(
                 name=c.name, status=status, flag=flag,

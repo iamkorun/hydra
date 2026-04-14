@@ -21,9 +21,18 @@ async def fake_worker_solved(*args, **kwargs) -> WorkerResult:
     )
 
 async def fake_worker_failed(*args, **kwargs) -> WorkerResult:
+    # Clean exit, no flag recovered → status "failed"
+    return WorkerResult(
+        name=kwargs["name"], exit_code=0,
+        stdout="no flag found\n",
+        stderr="", timed_out=False, duration_s=0.1,
+    )
+
+async def fake_worker_errored(*args, **kwargs) -> WorkerResult:
+    # Non-zero exit → status "error"
     return WorkerResult(
         name=kwargs["name"], exit_code=1,
-        stdout="no flag found\n",
+        stdout="partial output\n",
         stderr="boom", timed_out=False, duration_s=0.1,
     )
 
@@ -97,7 +106,7 @@ async def test_timeout_status(tmp_path, monkeypatch):
     assert r.flag is None
     assert (tmp_path / "failures" / "a.md").exists()
 
-async def test_failure_writes_md(tmp_path, monkeypatch):
+async def test_failed_status_on_clean_exit_no_flag(tmp_path, monkeypatch):
     monkeypatch.setattr("hydra.orchestrator.run_worker", fake_worker_failed)
     writer = FakeWriter()
     cfg = OrchestratorConfig(
@@ -111,6 +120,26 @@ async def test_failure_writes_md(tmp_path, monkeypatch):
     await orch.run([Challenge(name="a", description="x")])
     [r] = writer.appended
     assert r.status == "failed"
+    assert r.flag is None
+    assert (tmp_path / "failures" / "a.md").exists()
+
+async def test_error_status_on_nonzero_exit(tmp_path, monkeypatch):
+    monkeypatch.setattr("hydra.orchestrator.run_worker", fake_worker_errored)
+    writer = FakeWriter()
+    cfg = OrchestratorConfig(
+        parallel=1, timeout_s=30, model="m",
+        image="hydra-worker", api_key="sk",
+        runs_dir=tmp_path / "runs",
+        failures_dir=tmp_path / "failures",
+        prompt_volumes={},
+    )
+    orch = Orchestrator(cfg, writer=writer)
+    await orch.run([Challenge(name="a", description="x")])
+    [r] = writer.appended
+    assert r.status == "error"
+    assert r.flag is None
+    # stderr preserved in reason for debugging
+    assert "boom" in (r.reason or "")
     assert (tmp_path / "failures" / "a.md").exists()
 
 async def test_skip_already_solved(tmp_path, monkeypatch):

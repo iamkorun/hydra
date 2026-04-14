@@ -29,14 +29,30 @@ async def run_worker(
     name: str,
     workdir: Path,
     image: str,
-    api_key: str,
     model: str,
     timeout_s: float,
     container_cpus: int,
     container_memory: str,
     prompt_volumes: dict[Path, str],
+    api_key: str | None = None,
+    credentials_dir: Path | None = None,
     engine: str = DEFAULT_ENGINE,
 ) -> WorkerResult:
+    """Run one `claude -p` CTF-solve in a Docker container.
+
+    Authentication (exactly one of):
+      - credentials_dir: host dir with a logged-in Claude Code credentials
+        file. Mounted at /root/.claude:ro inside the container so the
+        containerized `claude` CLI uses the host's subscription auth.
+      - api_key: ANTHROPIC_API_KEY, passed via `-e`.
+
+    credentials_dir is preferred when both are supplied.
+    """
+    if credentials_dir is None and not api_key:
+        raise ValueError(
+            "run_worker requires either credentials_dir (preferred) or api_key"
+        )
+
     container_name = f"hydra-{name}-{uuid.uuid4().hex[:8]}"
 
     cmd = [
@@ -49,8 +65,11 @@ async def run_worker(
     ]
     for src, dest in prompt_volumes.items():
         cmd += ["-v", f"{src.resolve()}:{dest}:ro"]
+    if credentials_dir is not None:
+        cmd += ["-v", f"{credentials_dir.resolve()}:/root/.claude:ro"]
+    elif api_key:
+        cmd += ["-e", f"ANTHROPIC_API_KEY={api_key}"]
     cmd += [
-        "-e", f"ANTHROPIC_API_KEY={api_key}",
         "-w", "/workspace",
         image,
         "claude", "-p", _PROMPT,

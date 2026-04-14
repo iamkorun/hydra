@@ -88,5 +88,7 @@ async def test_mixed_batch(tmp_path, fake_docker):
     )
     by_name = {r.name: r for r in writer._results}
     assert by_name["a"].status == "solved"
-    assert by_name["b"].status == "failed"
+    # Non-zero exit → "error" (distinct from "failed" which is clean-exit-no-flag)
+    assert by_name["b"].status == "error"
+    assert "explode" in (by_name["b"].reason or "")
     assert by_name["c"].status == "solved"
