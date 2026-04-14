@@ -32,6 +32,7 @@ class ResolvedConfig:
     credentials_dir: Path | None = None
     api_key: str | None = None
     image: str = "hydra-worker"
+    attempts: int = 1
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -39,9 +40,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Autonomous CTF batch solver — JSON in, flags out.",
     )
     p.add_argument("challenges", help="Path to challenges JSON (or '-' for stdin)")
-    p.add_argument("--parallel", type=int, default=8, help="Concurrent workers")
+    p.add_argument("--parallel", type=int, default=8, help="Concurrent workers (containers)")
     p.add_argument("--timeout", type=int, default=3600, help="Per-challenge wall-clock (s)")
     p.add_argument("--model", default=DEFAULT_MODEL, help="Claude model")
+    p.add_argument(
+        "--attempts", type=int, default=1,
+        help="pass@k: run K parallel attempts per challenge, first flag wins. "
+             "Each attempt consumes a --parallel slot. Palisade arxiv 2412.02776 "
+             "reports 83%%→95%% on InterCode-CTF moving from k=1 to k=10.",
+    )
     p.add_argument("--retry-failed", action="store_true",
                    help="Re-run entries currently marked failed/timeout/error")
     p.add_argument("--only", default=None,
@@ -67,6 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def resolve_config(ns: argparse.Namespace, *, root: Path) -> ResolvedConfig:
     creds_dir, api_key = _resolve_auth(ns)
+    if ns.attempts < 1:
+        print("error: --attempts must be >= 1", file=sys.stderr)
+        raise SystemExit(2)
     return ResolvedConfig(
         challenges_path=ns.challenges,
         credentials_dir=creds_dir,
@@ -83,6 +93,7 @@ def resolve_config(ns: argparse.Namespace, *, root: Path) -> ResolvedConfig:
         only_filter=_parse_only(ns.only),
         dry_run=ns.dry_run,
         rebuild_image=ns.rebuild_image,
+        attempts=ns.attempts,
     )
 
 def _resolve_auth(ns: argparse.Namespace) -> tuple[Path | None, str | None]:
@@ -187,6 +198,7 @@ async def _run(cfg: ResolvedConfig) -> int:
         failures_dir=cfg.failures_dir,
         prompt_volumes=_prompt_volumes(root),
         skip_names=skip,
+        attempts=cfg.attempts,
     )
     orch = Orchestrator(orch_cfg, writer=writer)
     run_id = datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z")

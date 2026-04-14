@@ -2,8 +2,13 @@ import shutil
 from pathlib import Path
 from hydra.models import Challenge
 
-def build_workdir(c: Challenge, *, runs_dir: Path) -> Path:
-    wd = runs_dir / c.name
+def build_workdir(c: Challenge, *, runs_dir: Path, subpath: str | None = None) -> Path:
+    """Build an isolated workdir for a single solve attempt.
+
+    subpath, when provided, nests the workdir under runs_dir/<name>/<subpath>/
+    (used for pass@k: each attempt gets its own {challenge,work,logs,flag.txt}).
+    """
+    wd = runs_dir / c.name / subpath if subpath else runs_dir / c.name
     (wd / "challenge").mkdir(parents=True, exist_ok=True)
     (wd / "work").mkdir(exist_ok=True)
     (wd / "logs").mkdir(exist_ok=True)

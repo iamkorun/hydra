@@ -139,6 +139,78 @@ async def test_error_status_on_nonzero_exit(tmp_path, monkeypatch):
     assert "boom" in (r.reason or "")
     assert (tmp_path / "failures" / "a.md").exists()
 
+async def test_passk_first_flag_wins(tmp_path, monkeypatch):
+    """pass@k: fastest attempt to produce a flag wins; siblings cancelled."""
+    cancelled = {"count": 0}
+    order = {"idx": 0}
+
+    async def race_worker(*args, **kwargs):
+        my_idx = order["idx"]
+        order["idx"] += 1
+        try:
+            if my_idx == 0:
+                await asyncio.sleep(0.01)  # fastest → winner
+                # Write flag to the real workdir so extract_flag can find it.
+                (kwargs["workdir"] / "flag.txt").write_text(f"flag{{win-{my_idx}}}\n")
+                return WorkerResult(
+                    name=kwargs["name"], exit_code=0,
+                    stdout=f"FLAG: flag{{win-{my_idx}}}\n",
+                    stderr="", timed_out=False, duration_s=0.01,
+                )
+            await asyncio.sleep(5)  # siblings should be cancelled before this
+            return WorkerResult(
+                name=kwargs["name"], exit_code=0,
+                stdout="slow\n", stderr="", timed_out=False, duration_s=5.0,
+            )
+        except asyncio.CancelledError:
+            cancelled["count"] += 1
+            raise
+
+    monkeypatch.setattr("hydra.orchestrator.run_worker", race_worker)
+    writer = FakeWriter()
+    cfg = OrchestratorConfig(
+        parallel=3, timeout_s=30, model="m",
+        image="hydra-worker", api_key="sk",
+        runs_dir=tmp_path / "runs",
+        failures_dir=tmp_path / "failures",
+        prompt_volumes={},
+        attempts=3,
+    )
+    orch = Orchestrator(cfg, writer=writer)
+    await orch.run([Challenge(name="a", description="x")])
+    [r] = writer.appended
+    assert r.status == "solved"
+    assert r.flag == "flag{win-0}"
+    # The two losing siblings should have been cancelled.
+    assert cancelled["count"] == 2
+    # Winner's flag copied to the top-level conventional path.
+    assert (tmp_path / "runs" / "a" / "flag.txt").read_text().strip() == "flag{win-0}"
+
+async def test_passk_all_fail(tmp_path, monkeypatch):
+    """pass@k: if every attempt fails, result is failed with the last worker's state."""
+    async def no_flag(*args, **kwargs):
+        return WorkerResult(
+            name=kwargs["name"], exit_code=0,
+            stdout="tried but no flag\n", stderr="",
+            timed_out=False, duration_s=0.05,
+        )
+    monkeypatch.setattr("hydra.orchestrator.run_worker", no_flag)
+    writer = FakeWriter()
+    cfg = OrchestratorConfig(
+        parallel=2, timeout_s=30, model="m",
+        image="hydra-worker", api_key="sk",
+        runs_dir=tmp_path / "runs",
+        failures_dir=tmp_path / "failures",
+        prompt_volumes={},
+        attempts=2,
+    )
+    orch = Orchestrator(cfg, writer=writer)
+    await orch.run([Challenge(name="a", description="x")])
+    [r] = writer.appended
+    assert r.status == "failed"
+    assert r.flag is None
+    assert (tmp_path / "failures" / "a.md").exists()
+
 async def test_skip_already_solved(tmp_path, monkeypatch):
     monkeypatch.setattr("hydra.orchestrator.run_worker", fake_worker_solved)
     writer = FakeWriter()

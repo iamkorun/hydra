@@ -22,6 +22,7 @@ class OrchestratorConfig:
     container_cpus: int = 2
     container_memory: str = "8g"
     skip_names: set[str] = field(default_factory=set)
+    attempts: int = 1  # pass@k: N parallel attempts per challenge, first flag wins
 
 class Orchestrator:
     def __init__(self, cfg: OrchestratorConfig, *, writer):
@@ -45,46 +46,105 @@ class Orchestrator:
 
     async def _one(self, c: Challenge) -> None:
         assert self._sem is not None
-        async with self._sem:
-            started = _now_iso()
-            wd = build_workdir(c, runs_dir=self.cfg.runs_dir)
-            wr: WorkerResult = await run_worker(
-                name=c.name,
-                workdir=wd,
-                image=self.cfg.image,
-                credentials_dir=self.cfg.credentials_dir,
-                api_key=self.cfg.api_key,
-                model=self.cfg.model,
-                timeout_s=self.cfg.timeout_s,
-                container_cpus=self.cfg.container_cpus,
-                container_memory=self.cfg.container_memory,
-                prompt_volumes=self.cfg.prompt_volumes,
-            )
-            flag = extract_flag(flag_file=wd / "flag.txt", stdout=wr.stdout)
+        started = _now_iso()
+        if self.cfg.attempts <= 1:
+            async with self._sem:
+                wd, wr = await self._attempt(c, subpath=None)
+        else:
+            wd, wr = await self._pass_at_k(c)
 
-            if wr.timed_out:
-                status, reason = "timeout", f"wall-clock timeout after {self.cfg.timeout_s}s"
-            elif flag:
-                status, reason = "solved", None
-            elif wr.exit_code != 0:
-                status = "error"
-                reason = (wr.stderr[-1024:] if wr.stderr else f"worker exited {wr.exit_code}")
-            else:
-                status, reason = "failed", "no flag recovered from stdout or flag.txt"
+        flag = extract_flag(flag_file=wd / "flag.txt", stdout=wr.stdout)
 
-            r = Result(
-                name=c.name, status=status, flag=flag,
-                duration_s=wr.duration_s,
-                started_at=started, finished_at=_now_iso(),
-                worker_exit_code=wr.exit_code,
-                work_dir=str(wd),
-                reason=reason,
-            )
-            self._results.append(r)
-            self.writer.append(r)
-            if status != "solved":
-                write_failure_md(c, r, work_dir=wd, failures_dir=self.cfg.failures_dir)
-            _print_status(r)
+        if wr.timed_out:
+            status, reason = "timeout", f"wall-clock timeout after {self.cfg.timeout_s}s"
+        elif flag:
+            status, reason = "solved", None
+        elif wr.exit_code != 0:
+            status = "error"
+            reason = (wr.stderr[-1024:] if wr.stderr else f"worker exited {wr.exit_code}")
+        else:
+            status, reason = "failed", "no flag recovered from stdout or flag.txt"
+
+        r = Result(
+            name=c.name, status=status, flag=flag,
+            duration_s=wr.duration_s,
+            started_at=started, finished_at=_now_iso(),
+            worker_exit_code=wr.exit_code,
+            work_dir=str(wd),
+            reason=reason,
+        )
+        self._results.append(r)
+        self.writer.append(r)
+        if status != "solved":
+            write_failure_md(c, r, work_dir=wd, failures_dir=self.cfg.failures_dir)
+        _print_status(r)
+
+    async def _attempt(
+        self, c: Challenge, *, subpath: str | None
+    ) -> tuple[Path, WorkerResult]:
+        """Run a single solve attempt, returning (workdir, worker_result)."""
+        wd = build_workdir(c, runs_dir=self.cfg.runs_dir, subpath=subpath)
+        wr = await run_worker(
+            name=c.name,
+            workdir=wd,
+            image=self.cfg.image,
+            credentials_dir=self.cfg.credentials_dir,
+            api_key=self.cfg.api_key,
+            model=self.cfg.model,
+            timeout_s=self.cfg.timeout_s,
+            container_cpus=self.cfg.container_cpus,
+            container_memory=self.cfg.container_memory,
+            prompt_volumes=self.cfg.prompt_volumes,
+        )
+        return wd, wr
+
+    async def _pass_at_k(self, c: Challenge) -> tuple[Path, WorkerResult]:
+        """Fan out N attempts. First one to produce a flag wins; cancel the rest.
+        Each attempt consumes a semaphore slot, so N parallel attempts reduce
+        the effective cross-challenge concurrency by N."""
+        assert self._sem is not None
+        k = self.cfg.attempts
+
+        async def one_slotted(idx: int) -> tuple[Path, WorkerResult]:
+            async with self._sem:
+                return await self._attempt(c, subpath=f"a{idx + 1}")
+
+        tasks = [asyncio.create_task(one_slotted(i)) for i in range(k)]
+        pending = set(tasks)
+        winner: tuple[Path, WorkerResult] | None = None
+        last: tuple[Path, WorkerResult] | None = None
+
+        try:
+            while pending:
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED
+                )
+                for t in done:
+                    try:
+                        wd, wr = t.result()
+                    except asyncio.CancelledError:
+                        continue
+                    last = (wd, wr)
+                    flag = extract_flag(flag_file=wd / "flag.txt", stdout=wr.stdout)
+                    if flag and not wr.timed_out:
+                        winner = (wd, wr)
+                        break
+                if winner:
+                    break
+        finally:
+            for t in pending:
+                t.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+
+        if winner:
+            # Copy the winner's flag.txt up to the conventional top-level
+            # path so external tooling sees a single source of truth.
+            top_flag = self.cfg.runs_dir / c.name / "flag.txt"
+            top_flag.write_text((winner[0] / "flag.txt").read_text())
+            return winner
+        assert last is not None, "all pass@k attempts cancelled without completing"
+        return last
 
 def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z")

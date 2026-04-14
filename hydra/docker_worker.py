@@ -101,6 +101,14 @@ async def run_worker(
         except asyncio.TimeoutError:
             await proc.wait()
             stdout_bytes, stderr_bytes = b"", b""
+    except asyncio.CancelledError:
+        await _docker_stop(engine, container_name)
+        proc.kill()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=15)
+        except asyncio.TimeoutError:
+            pass
+        raise
 
     duration = asyncio.get_event_loop().time() - start
     stdout = stdout_bytes.decode(errors="replace")
