@@ -19,3 +19,7 @@ ruby
 ruby-dev
 patchelf
 p7zip-full
+ripgrep
+fd-find
+ugrep
+pv

@@ -11,6 +11,8 @@ r2pipe==1.9.*
 ROPgadget==7.6
 volatility3==2.8.*
 # Crypto — lattice reduction (Sage replacements for Coppersmith, SVP/CVP, etc.)
+# cysignals is a runtime dep of fpylll that its wheel doesn't auto-pull on Linux.
+cysignals==1.12.*
 fpylll==0.6.*
 flatter==0.0.3
 # Web — playwright for JS-heavy chals (needs `playwright install chromium`, done below in Dockerfile)
@@ -18,6 +20,9 @@ playwright==1.48.*
 # Reverse — python bytecode + binary parsing
 uncompyle6==3.9.*
 lief==0.17.*
-pyinstxtractor-ng==2026.*
+# pyinstxtractor-ng installed in Dockerfile with --no-deps:
+# upstream hard-pins pycryptodome==3.17 and xdis==6.3 (2026.x) which conflict with our
+# pycryptodome==3.20 and uncompyle6's xdis<6.3. Pinning 2025.1.6 (last version whose xdis
+# pin is 6.1.3, compatible with uncompyle6) + --no-deps sidesteps both conflicts.
 # Forensics extras
 pillow==11.*

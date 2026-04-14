@@ -6,52 +6,49 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_BREAK_SYSTEM_PACKAGES=1
 
 # System layer (rare churn)
+# fd-find installs the binary as `fdfind` on Debian/Ubuntu; symlink to `fd` for muscle memory.
 COPY docker/apt-packages.txt /tmp/apt-packages.txt
 RUN apt-get update \
  && xargs -a /tmp/apt-packages.txt apt-get install -y --no-install-recommends \
+ && ln -s /usr/bin/fdfind /usr/local/bin/fd \
  && rm -rf /var/lib/apt/lists/*
 
 # Python CTF stack (rare churn)
 COPY docker/requirements-ctf.txt /tmp/requirements-ctf.txt
-RUN pip install -r /tmp/requirements-ctf.txt
+RUN pip install -r /tmp/requirements-ctf.txt \
+ && pip install --no-deps pyinstxtractor-ng==2025.1.6
 
 # Playwright Chromium for JS-heavy web challenges (~300 MB).
 # --with-deps pulls apt runtime libs; must run before apt lists are cleaned.
 RUN playwright install --with-deps chromium
 
-# Web tooling
+# Specialist tooling — web + reverse + crypto + forensics.
+# Consolidated into one layer: all rare-churn, single `apt-get update` cuts ~30s off rebuilds.
+# - web:       ffuf gobuster sqlmap nikto wfuzz
+# - reverse:   radare2 ltrace strace upx-ucl
+# - crypto:    pari-gp (factoring, number theory). sagemath gone from noble — use fpylll/flatter
+#              from pip, or conda ad-hoc in work/ for Coppersmith/LLL.
+# - forensics: binwalk foremost steghide tshark exiftool sleuthkit (fls/icat/mmls) binaryen
+#              (wasm-decompile). zsteg is a Ruby gem, installed below.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     ffuf gobuster sqlmap nikto wfuzz \
- && rm -rf /var/lib/apt/lists/*
-
-# Reverse tooling
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
     radare2 ltrace strace upx-ucl \
- && rm -rf /var/lib/apt/lists/*
-
-# Crypto CLI (pari-gp factoring, command-line number theory).
-# Note: `sagemath` was removed from Ubuntu starting with noble (24.04).
-# For Sage-only attacks (Coppersmith, LLL), use fpylll/flatter from pip (below)
-# or fall back to sympy + RsaCtfTool. If a chal truly needs sage, a specialist
-# can `apt install conda && conda install -c conda-forge sage` ad-hoc in work/.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends pari-gp \
- && rm -rf /var/lib/apt/lists/*
-
-# Forensics (zsteg is a Ruby gem — installed below, not here).
-# sleuthkit: fls, icat, mmls (disk-image forensics).
-# binaryen: wasm-decompile for WASM reverse-engineering chals.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
+    pari-gp \
     binwalk foremost steghide tshark exiftool sleuthkit binaryen \
  && rm -rf /var/lib/apt/lists/*
 
-# External git-installed tools
+# External git-installed tools.
+# RsaCtfTool pins outdated versions (pycryptodome==3.10, z3-solver, requests, chardet...)
+# that would downgrade our pwntools/angr stack. Isolate it in a dedicated venv (python3-venv
+# is already in the base apt layer) and wrap as a shim script so the global Python env
+# stays pinned to our versions.
 RUN git clone --depth 1 https://github.com/RsaCtfTool/RsaCtfTool /opt/RsaCtfTool \
- && pip install -r /opt/RsaCtfTool/requirements.txt \
- && ln -s /opt/RsaCtfTool/RsaCtfTool.py /usr/local/bin/RsaCtfTool
+ && python3 -m venv /opt/RsaCtfTool/.venv \
+ && /opt/RsaCtfTool/.venv/bin/pip install --no-cache-dir -r /opt/RsaCtfTool/requirements.txt \
+ && printf '#!/bin/sh\nexec /opt/RsaCtfTool/.venv/bin/python /opt/RsaCtfTool/RsaCtfTool.py "$@"\n' \
+      > /usr/local/bin/RsaCtfTool \
+ && chmod +x /usr/local/bin/RsaCtfTool
 # Ruby gems: one_gadget (pwn libc gadget finder), zsteg (PNG/BMP LSB stego).
 RUN gem install one_gadget zsteg
 
