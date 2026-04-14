@@ -1,0 +1,11 @@
+[
+  {
+    "name": "pwn1",
+    "category": "pwn",
+    "points": 200,
+    "description": "Classic ret2libc.",
+    "files": ["/tmp/pwn1-binary"],
+    "remote": "nc chal.example.com 1337",
+    "hints": ["libc is 2.35"]
+  }
+]

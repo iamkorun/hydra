@@ -1,0 +1,10 @@
+[
+  {
+    "title": "web-login",
+    "prompt": "SQL injection somewhere.",
+    "attachments": [],
+    "url": "http://ctf.example.com:8080",
+    "tag": "web",
+    "score": 100
+  }
+]
