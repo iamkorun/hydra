@@ -26,3 +26,16 @@ include = ["hydra*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests/unit", "tests/integration"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# Default rules (E, F). Exploit templates use `from pwn import *` which is
+# the pwntools convention — don't flag it there.
+extend-ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"exploits/**/*.py" = ["F401", "F403", "F405", "E402", "E702"]
+# Skill files and inline-runnable exploit templates intentionally leave
+# `# TODO` placeholders that the solver fills in at run-time.

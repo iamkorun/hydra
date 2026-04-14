@@ -1,5 +1,4 @@
 import asyncio
-import signal
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path

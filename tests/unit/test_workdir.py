@@ -1,5 +1,4 @@
 from pathlib import Path
-import pytest
 from hydra.models import Challenge
 from hydra.workdir import build_workdir
 
@@ -60,7 +59,8 @@ def test_missing_file_logged_not_fatal(tmp_path: Path):
     assert "nonexistent" in warnings
 
 def test_filename_collision_suffixes(tmp_path: Path):
-    (tmp_path / "a").mkdir(); (tmp_path / "b").mkdir()
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
     (tmp_path / "a" / "dup.txt").write_text("A")
     (tmp_path / "b" / "dup.txt").write_text("B")
     c = Challenge(name="x", description="y", files=[

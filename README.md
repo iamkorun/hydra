@@ -18,12 +18,45 @@ For each challenge in the JSON, Hydra spawns a Docker container running `claude 
 ## Install
 
 ```bash
-# Prereqs: Docker CE + Python 3.12 + an Anthropic API key
+# Prereqs: Docker CE (or Podman) + Python 3.12+ + Claude Code auth
 git clone <this-repo> && cd hydra
-python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 docker build -t hydra-worker .        # ~10-20 min first time
-export ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+## Authentication
+
+Hydra runs `claude -p` inside each Docker container. You can authenticate
+two ways (subscription preferred):
+
+### A. Claude Max / Pro subscription (preferred)
+
+If you've already logged into Claude Code on this host (`claude login`),
+your host-side `~/.claude/` directory contains the credentials. Hydra
+auto-detects this and bind-mounts it into each worker container at
+`/root/.claude:ro`, so the containerized `claude -p` uses your
+subscription without seeing your API key at all.
+
+```bash
+# Verify you're logged in on the host:
+claude --version
+ls ~/.claude/   # should contain credentials.json or settings.json
+
+# Then just run:
+hydra challenges.json
+```
+
+To override the auto-detected dir, pass `--credentials-dir /some/other/.claude`.
+
+### B. Anthropic API key (fallback)
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+hydra challenges.json --use-api-key         # or let auto-detect fall through
+```
+
+The `--use-api-key` flag forces API-key mode even if `~/.claude`
+exists. Without it, Hydra prefers subscription auth.
 
 ## Input format
 

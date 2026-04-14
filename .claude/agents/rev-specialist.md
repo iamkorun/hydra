@@ -42,8 +42,8 @@ Ghidra + angr are for challenges that genuinely need decompilation or symbolic e
    - Option B: ghidra headless — `./work/ghidra.sh ./challenge/bin`
 7. **Try to bypass rather than reverse** if the check is a single branch:
    - Patch a `jne` → `je` (radare2 `wx` or `objcopy`)
-   - Use `exploits/rev/patch_no_jmp.py` pattern
-8. **Use angr** for "find input that reaches target address": `exploits/rev/angr_find_input.py`
+   - Example: `r2 -qwc 'wa je @ 0x401234' ./challenge/bin` rewrites a single byte.
+8. **Use angr** for "find input that reaches target address": adapt `exploits/pwn/angr_find_input.py` (the template works equally well for rev).
 9. **If it's an encoded flag**, decode in `./work/solve.py`.
 
 # Skills reference

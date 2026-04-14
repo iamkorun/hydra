@@ -1,7 +1,4 @@
 import asyncio
-from datetime import datetime, timezone
-from pathlib import Path
-import pytest
 from hydra.models import Challenge, Result
 from hydra.orchestrator import Orchestrator, OrchestratorConfig
 from hydra.docker_worker import WorkerResult
