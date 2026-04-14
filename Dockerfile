@@ -15,6 +15,10 @@ RUN apt-get update \
 COPY docker/requirements-ctf.txt /tmp/requirements-ctf.txt
 RUN pip install -r /tmp/requirements-ctf.txt
 
+# Playwright Chromium for JS-heavy web challenges (~300 MB).
+# --with-deps pulls apt runtime libs; must run before apt lists are cleaned.
+RUN playwright install --with-deps chromium
+
 # Web tooling
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
@@ -44,6 +48,19 @@ RUN git clone --depth 1 https://github.com/RsaCtfTool/RsaCtfTool /opt/RsaCtfTool
  && ln -s /opt/RsaCtfTool/RsaCtfTool.py /usr/local/bin/RsaCtfTool
 # Ruby gems: one_gadget (pwn libc gadget finder), zsteg (PNG/BMP LSB stego).
 RUN gem install one_gadget zsteg
+
+# Ghidra headless — NSA reverse-engineering suite. Requires JDK 21 (default-jdk-headless on noble).
+# Version pinned; check `gh release view --repo NationalSecurityAgency/ghidra` to bump.
+ARG GHIDRA_VERSION=12.0.4
+ARG GHIDRA_DATE=20260303
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends default-jdk-headless \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -fsSL -o /tmp/ghidra.zip \
+    "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_${GHIDRA_VERSION}_build/ghidra_${GHIDRA_VERSION}_PUBLIC_${GHIDRA_DATE}.zip" \
+ && unzip -q /tmp/ghidra.zip -d /opt \
+ && rm /tmp/ghidra.zip \
+ && ln -s "/opt/ghidra_${GHIDRA_VERSION}_PUBLIC/support/analyzeHeadless" /usr/local/bin/analyzeHeadless
 
 # NodeSource Node 22 — Ubuntu 24.04's default nodejs may be too old for Claude Code
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \

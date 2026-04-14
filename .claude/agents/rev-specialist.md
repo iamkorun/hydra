@@ -26,8 +26,8 @@ Ghidra + angr are for challenges that genuinely need decompilation or symbolic e
 - `ghidra` (headless: `analyzeHeadless`) — decompile
 - `angr` — symbolic execution
 - `upx -d` — unpacking
-- `pyinstxtractor` + `uncompyle6` — PyInstaller + Python bytecode
-- `jadx` / `cfr` — Java
+- `pyinstxtractor-ng` + `uncompyle6` — PyInstaller + Python bytecode (uncompyle6 supports up to Python 3.8 bytecode)
+- `jadx` — Java decompiler (CFR not in the image; `curl` its jar from github.com/leibnitz27/cfr/releases if ever needed)
 - `wasm-decompile` — WebAssembly
 
 # Process

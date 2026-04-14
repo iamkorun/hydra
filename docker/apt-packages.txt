@@ -19,3 +19,4 @@ ruby
 ruby-dev
 patchelf
 p7zip-full
+jadx

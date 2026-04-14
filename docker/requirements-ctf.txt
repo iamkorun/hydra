@@ -10,3 +10,11 @@ pyjwt==2.10.*
 r2pipe==1.9.*
 ROPgadget==7.6
 volatility3==2.8.*
+# Web — playwright for JS-heavy chals (needs `playwright install chromium`, done below in Dockerfile)
+playwright==1.48.*
+# Reverse — python bytecode + binary parsing
+uncompyle6==3.9.*
+lief==0.17.*
+pyinstxtractor-ng==2026.*
+# Forensics extras
+pillow==11.*
