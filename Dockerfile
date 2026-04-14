@@ -31,9 +31,13 @@ RUN apt-get update \
     radare2 ltrace strace upx-ucl \
  && rm -rf /var/lib/apt/lists/*
 
-# Crypto (sagemath is heavy — ~2 GB)
+# Crypto CLI (pari-gp factoring, command-line number theory).
+# Note: `sagemath` was removed from Ubuntu starting with noble (24.04).
+# For Sage-only attacks (Coppersmith, LLL), use fpylll/flatter from pip (below)
+# or fall back to sympy + RsaCtfTool. If a chal truly needs sage, a specialist
+# can `apt install conda && conda install -c conda-forge sage` ad-hoc in work/.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends sagemath \
+ && apt-get install -y --no-install-recommends pari-gp \
  && rm -rf /var/lib/apt/lists/*
 
 # Forensics (zsteg is a Ruby gem — installed below, not here).
@@ -63,6 +67,16 @@ RUN apt-get update \
  && unzip -q /tmp/ghidra.zip -d /opt \
  && rm /tmp/ghidra.zip \
  && ln -s "/opt/ghidra_${GHIDRA_VERSION}_PUBLIC/support/analyzeHeadless" /usr/local/bin/analyzeHeadless
+
+# Jadx (Java decompiler) — not in Ubuntu noble apt, download from github release.
+# Shares the JDK from the Ghidra layer above.
+ARG JADX_VERSION=1.5.5
+RUN curl -fsSL -o /tmp/jadx.zip \
+    "https://github.com/skylot/jadx/releases/download/v${JADX_VERSION}/jadx-${JADX_VERSION}.zip" \
+ && unzip -q /tmp/jadx.zip -d /opt/jadx \
+ && rm /tmp/jadx.zip \
+ && ln -s /opt/jadx/bin/jadx /usr/local/bin/jadx \
+ && ln -s /opt/jadx/bin/jadx-gui /usr/local/bin/jadx-gui
 
 # NodeSource Node 22 — Ubuntu 24.04's default nodejs may be too old for Claude Code
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \

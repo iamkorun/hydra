@@ -56,13 +56,23 @@ for i, ni in enumerate(ns):
 
 **Signal:** Two ciphertexts, same `n` and `e=3`, messages differ by a known linear relation: `m2 = m1 + delta`.
 
-**Attack:** Requires sage / polynomial GCD. Template not in P1 — write from scratch using sage.
+**Attack:** Polynomial GCD over Z/nZ. Sage is NOT in the image. Two options:
+- `pari-gp` CLI (pre-installed): `gp -q -e "print(gcd(Mod(x^3 - c1, n), Mod((x+d)^3 - c2, n)))"`
+- Port ~30 lines of Python polynomial-gcd (reference: defund/coppersmith).
 
 ## Coppersmith's method
 
 **Signal:** Partial knowledge of `m` or a prime factor. Small `e`, high bits of `p` known, etc.
 
-**Attack:** sage's `small_roots` on the appropriate polynomial.
+**Attack:** Small-roots via LLL. Sage unavailable; use `fpylll` (pre-installed):
+
+```python
+from fpylll import LLL, IntegerMatrix
+# Build Coppersmith lattice, LLL-reduce, extract small root.
+# Copy-paste from https://github.com/defund/coppersmith (MIT licensed).
+```
+
+For larger lattices, `flatter` (pip-installed) is an order of magnitude faster.
 
 ## Fallback — RsaCtfTool
 
@@ -76,8 +86,14 @@ Read its output carefully — it often names the weakness explicitly.
 
 ## Last-resort factoring
 
-For small `n` (<512 bits), try:
+For small `n`, try in this order:
 ```bash
-# Use msieve or yafu if available, or sage's factor()
-sage -c "print(factor($N))"
+# pari/gp — pre-installed, fast up to ~100 bits
+gp -q -e "print(factor($N))"
+
+# sympy — fine for very small
+python3 -c "from sympy import factorint; print(factorint($N))"
+
+# msieve / yafu — not pre-installed. For 100-500 bit composites, clone ad-hoc:
+#   git clone https://github.com/radii/msieve && make -C msieve
 ```

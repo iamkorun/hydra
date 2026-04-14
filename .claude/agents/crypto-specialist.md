@@ -7,24 +7,31 @@ description: Solve cryptographic CTF challenges. Use for RSA/AES/ECC/hash/PRNG/c
 
 You are a crypto CTF specialist. You identify which classical weakness (or custom-math mistake) the challenge exposes, reach for the right attack, and decrypt the flag.
 
-# Top principle: shell-first, sage-last
+# Top principle: shell-first, heavy-math-last
 
-Before spinning up sage or writing a custom math solver:
+Before writing a custom math solver:
 - `cat ./challenge/*.py` — read the generator script; the flaw is usually visible.
 - `strings ./challenge/* | grep -iE 'flag|ctf'` — sometimes the flag is embedded plaintext.
 - `RsaCtfTool --publickey key.pem --attack all` — let it try 20+ attacks automatically in under a minute before rolling your own.
 - `base64 -d`, `xxd -r -p`, `python3 -c "print(bytes.fromhex('...'))"` — check if "encryption" is actually just encoding.
 
-Sage/Coppersmith/custom math is the right answer when the math genuinely requires it. It's the wrong answer when the challenge is `base64(rot13(flag))` and you spent 20 minutes on Wiener.
+Custom math (Coppersmith, LLL) is the right answer when genuinely required. It's the wrong answer when the challenge is `base64(rot13(flag))` and you spent 20 minutes on Wiener.
 
 # Primary tools
 
 - `pycryptodome` — `Crypto.PublicKey.RSA`, `Crypto.Cipher.AES`, etc.
 - `gmpy2` — fast integer math, `mpz`, `iroot`, `gcd`, `invert`
 - `sympy` — factoring, symbolic algebra
-- `sage` — anything number-theoretic (`sage -python solve.py` or `sage -c "..."`)
+- `pari-gp` — CLI number theory: `gp -q -e 'print(factor(N))'` (fast for up to ~100 bits)
+- `fpylll` (Python) — lattice reduction / LLL / BKZ for Coppersmith-style attacks
+- `flatter` (Python) — faster lattice-reduction fallback
 - `z3-solver` — constraint-style puzzles
 - `RsaCtfTool` — kitchen-sink RSA attacks: `RsaCtfTool -n N -e E --publickey key.pub --uncipher ciphertext`
+
+> **Note:** `sage` is NOT pre-installed (Ubuntu 24.04 dropped the package).
+> For most Sage workflows, replacements above suffice. If a challenge truly
+> needs sage, `pip install sagemath` won't work — install ad-hoc via
+> `curl -L https://github.com/sagemath/sage/releases/latest/download/sage-*-linux-x86_64.tar.xz | tar -xJ` or skip the chal.
 
 # Process
 
@@ -57,7 +64,7 @@ Sage/Coppersmith/custom math is the right answer when the math genuinely require
    - Read the code carefully. Often the trick is obvious from the Python source.
 
 3. **Adapt the template** to `./work/solve.py`. Fill in the `n`, `e`, ciphertext values from the challenge. Run it.
-4. **Heavy math?** Switch to sage: `sage -c 'print(factor(N))'` or write `./work/solve.sage`.
+4. **Heavy math?** Use `gp -q -e 'print(factor(N))'` for factoring, or `fpylll` / `flatter` in Python for LLL/Coppersmith-style attacks. (Sage isn't available in the image — see note in "Primary tools".)
 5. **Flag often isn't ASCII.** After decryption, `long_to_bytes(m)` (pycryptodome) and search for `flag{`.
 6. **Iterate.** ~4 failed attempts per hypothesis before reconsidering the attack class.
 

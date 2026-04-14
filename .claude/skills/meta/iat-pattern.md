@@ -35,7 +35,7 @@ perspective, someone's typing at a real terminal.
 | `sqlmap --os-shell` | Interactive DB/OS shell | `sql` |
 | `msfconsole` / `msf6` | Module state, session handles | `msf` |
 | `python3 -i` | REPL state (variables, imports) | `py` |
-| `sage` interactive | Number-theory state, large computations | `sage` |
+| `pari-gp` (`gp`) | Number-theory CLI state, fast factoring | `gp` |
 | `ssh host` | Shell history, env state | `ssh` |
 
 ## Naming & isolation
