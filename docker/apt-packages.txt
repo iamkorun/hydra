@@ -15,7 +15,7 @@ python3-venv
 tmux
 socat
 netcat-openbsd
-nodejs
-npm
 ruby
 ruby-dev
+patchelf
+p7zip-full
