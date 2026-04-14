@@ -69,6 +69,7 @@ Volatility, custom stego scripts, full pcap dissection are the right answer when
 
 - `.claude/skills/forensics/stego-checklist.md` — full LSB/appended/metadata workflow
 - `.claude/skills/forensics/volatility-deep.md` — Volatility3 plugin chain for Windows/Linux memory dumps (pslist, cmdscan, filescan, malfind, hashdump, bash history)
+- `.claude/skills/forensics/pcap-deep.md` — tshark-driven layered triage → plaintext protocol extraction (HTTP/FTP/Telnet/IRC/SMTP/SMB/DNS) → auth-hash dump (Kerberos AS-REP m=18200, NTLMv2 m=5600, WPA m=22000) → USB HID keystroke replay (full Python script) → DNS/ICMP/TTL covert channels → TLS decryption via SSLKEYLOGFILE or RSA key → VoIP RTP → industrial/OT
 
 # Exploit templates reference
 
