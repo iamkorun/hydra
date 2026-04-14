@@ -12,11 +12,11 @@ from hydra.orchestrator import Orchestrator, OrchestratorConfig
 from hydra.results import ResultsWriter, load_jsonl_names
 
 DEFAULT_MODEL = "claude-opus-4-6"
+DEFAULT_CREDENTIALS_DIR = Path.home() / ".claude"
 
 @dataclass
 class ResolvedConfig:
     challenges_path: str
-    api_key: str
     parallel: int
     timeout: int
     model: str
@@ -29,6 +29,8 @@ class ResolvedConfig:
     only_filter: set[str] | None
     dry_run: bool
     rebuild_image: bool
+    credentials_dir: Path | None = None
+    api_key: str | None = None
     image: str = "hydra-worker"
 
 def build_parser() -> argparse.ArgumentParser:
@@ -50,15 +52,24 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--flags-out", default=None, help="Path for flags.json")
     p.add_argument("--dry-run", action="store_true", help="Normalize + set up workdirs only")
     p.add_argument("--rebuild-image", action="store_true", help="Force docker build first")
+    p.add_argument(
+        "--credentials-dir",
+        default=None,
+        help="Host dir to mount at /root/.claude (default: ~/.claude if present). "
+             "When set, containerized `claude -p` uses host subscription auth.",
+    )
+    p.add_argument(
+        "--use-api-key",
+        action="store_true",
+        help="Force ANTHROPIC_API_KEY auth even if ~/.claude exists.",
+    )
     return p
 
 def resolve_config(ns: argparse.Namespace, *, root: Path) -> ResolvedConfig:
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not api_key:
-        print("error: ANTHROPIC_API_KEY not set in environment", file=sys.stderr)
-        raise SystemExit(2)
+    creds_dir, api_key = _resolve_auth(ns)
     return ResolvedConfig(
         challenges_path=ns.challenges,
+        credentials_dir=creds_dir,
         api_key=api_key,
         parallel=ns.parallel,
         timeout=ns.timeout,
@@ -73,6 +84,51 @@ def resolve_config(ns: argparse.Namespace, *, root: Path) -> ResolvedConfig:
         dry_run=ns.dry_run,
         rebuild_image=ns.rebuild_image,
     )
+
+def _resolve_auth(ns: argparse.Namespace) -> tuple[Path | None, str | None]:
+    """Return (credentials_dir, api_key). At least one must be non-None."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip() or None
+
+    # Explicit --use-api-key: skip credential-dir resolution.
+    if getattr(ns, "use_api_key", False):
+        if not api_key:
+            print(
+                "error: --use-api-key set but ANTHROPIC_API_KEY is empty",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        return None, api_key
+
+    # Explicit --credentials-dir takes priority.
+    if getattr(ns, "credentials_dir", None):
+        creds = Path(ns.credentials_dir).expanduser()
+        if not creds.is_dir():
+            print(f"error: --credentials-dir {creds} does not exist", file=sys.stderr)
+            raise SystemExit(2)
+        return creds, api_key  # api_key tagged along as fallback
+
+    # Default: prefer ~/.claude subscription auth if it looks valid.
+    if DEFAULT_CREDENTIALS_DIR.is_dir() and _looks_logged_in(DEFAULT_CREDENTIALS_DIR):
+        return DEFAULT_CREDENTIALS_DIR, api_key
+
+    # Fall back to API key.
+    if api_key:
+        return None, api_key
+
+    print(
+        "error: no auth — neither ~/.claude subscription credentials nor "
+        "ANTHROPIC_API_KEY env var found.\n"
+        "Fix: run `claude` once on the host to log in (subscription), OR set "
+        "`export ANTHROPIC_API_KEY=sk-ant-...` (API key).",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+
+def _looks_logged_in(claude_dir: Path) -> bool:
+    """Heuristic: Claude Code stores credentials/state in ~/.claude. Any of
+    these indicate a logged-in state."""
+    candidates = ("credentials.json", ".credentials.json", "settings.json")
+    return any((claude_dir / n).is_file() for n in candidates)
 
 def _parse_only(spec: str | None) -> set[str] | None:
     if not spec:
@@ -125,6 +181,7 @@ async def _run(cfg: ResolvedConfig) -> int:
         timeout_s=cfg.timeout,
         model=cfg.model,
         image=cfg.image,
+        credentials_dir=cfg.credentials_dir,
         api_key=cfg.api_key,
         runs_dir=cfg.runs_dir,
         failures_dir=cfg.failures_dir,
