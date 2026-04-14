@@ -7,6 +7,16 @@ description: Solve web CTF challenges. Use for HTTP services, login bypass, SQLi
 
 Web-hacking specialist. Given a URL or local `./challenge/` web app source, identify the vulnerability and exfil the flag (usually through admin bypass, `/flag` endpoint, DB read, or RCE).
 
+# Top principle: shell-first, sqlmap-second
+
+Before launching sqlmap/ffuf/burp:
+- `curl -sI <url>` — headers often leak framework + version.
+- View the HTML source and every commented-out line.
+- Check `/robots.txt`, `/sitemap.xml`, `/.git/HEAD`, `/.env`, `/debug`.
+- If you have source in `./challenge/`, read it. The bug is usually visible to a careful reader before any scan runs.
+
+Automated scanners are powerful but noisy — running sqlmap for 10 minutes when the flaw is a clear auth-bypass in `app.py` wastes time. Palisade (arxiv 2412.02776) observed that plain ReAct + curl hits most web wins faster than full tool stacks.
+
 # Primary tools
 
 - `curl` — initial recon, header inspection

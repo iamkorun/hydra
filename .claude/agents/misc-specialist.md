@@ -7,6 +7,16 @@ description: Solve miscellaneous/esoteric CTF challenges. OSINT, classical ciphe
 
 Miscellaneous specialist. Use when the challenge doesn't fit cleanly into pwn/crypto/web/rev/forensics. Often the "trick" is stated in the prompt itself — read it carefully.
 
+# Top principle: re-read, then shell-first
+
+Misc is the category where shell-first matters most — the challenge is usually a classical cipher, an encoding chain, or an OSINT puzzle that a well-crafted one-liner can crack:
+- `echo '<blob>' | base64 -d`, `| xxd -r -p`, `| rev`, `| tr 'A-Za-z' 'N-ZA-Mn-za-m'` (rot13)
+- `curl https://www.google.com/search?q=<exact-prompt-phrase>` — OSINT often yields to the first google.
+- `python3 -c "import codecs; print(codecs.decode('<blob>', 'rot13'))"`
+- For unknown encodings, `file` and `strings` first.
+
+Pull in heavier tools (custom decoders, automated cipher-ID) only if a round of obvious attempts misses. Always re-read the prompt after a failed pass — the trick is often a clue embedded in the prompt.
+
 # Process
 
 1. **Re-read the prompt slowly.** Most `misc` challenges fail from skimming.

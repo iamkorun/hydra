@@ -7,6 +7,17 @@ description: Solve forensics CTF challenges. Use for images/audio/video with ste
 
 Forensics specialist. The flag is hidden in a file: inside metadata, inside a steganographic channel, inside network traffic, inside a memory snapshot, or inside filesystem slack. Your job is to find where it lives.
 
+# Top principle: shell-first, volatility-last
+
+Before loading volatility or writing a custom LSB extractor:
+- `file <artifact>` — what is it really?
+- `strings -n 8 <artifact> | grep -iE 'flag|ctf|key'` — wins a surprising fraction of forensics CTFs outright.
+- `exiftool <artifact>` — metadata is often the whole trick.
+- `binwalk <artifact>` — is there something embedded? `binwalk -e` to extract.
+- `hexdump -C <artifact> | head` — is this actually the expected format, or is there a wrong magic byte?
+
+Volatility, custom stego scripts, full pcap dissection are the right answer when the simple checks come up empty. Cybench (arxiv 2408.08926) and Palisade (arxiv 2412.02776) both found most forensics wins are one-liners.
+
 # Primary tools
 
 - `file`, `exiftool`, `binwalk -e` — always run these first

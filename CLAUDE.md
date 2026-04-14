@@ -56,3 +56,19 @@ Budget at most two re-dispatches before writing a postmortem.
 - Do not invent or hallucinate flags. If you can't recover one, say so.
 - Do not spend more than your container's wall-clock budget. If stdout has been idle for 5 minutes with no new tool calls, stop.
 - Do not connect to services that aren't explicitly mentioned in `README.md` or `hints.md`.
+
+## Meta skills (consult when the work calls for them)
+
+- **Decompose hard challenges.** If the task feels like it has multiple stages (setup → exploit → pivot → flag, or forensics → rev → decode), read `.claude/skills/meta/subtask-decomposition.md` and write a plan to `./work/plan.md` before diving in.
+- **Use tmux for stateful interaction.** Any challenge that needs a long-lived nc/gdb/msfconsole session should use the pattern in `.claude/skills/meta/iat-pattern.md` + `.claude/skills/pwn/tmux-session.md`. Don't re-connect per Bash call.
+- **Try shell first.** Before reaching for pwntools/sage/ghidra-headless, try a one-liner with `curl`, `nc`, `strings`, `xxd`, `base64`. Most CTF wins are a single pipe away.
+
+## After a solve — capture lessons
+
+When you solve something nontrivial, or hit a gotcha you wouldn't have guessed, append one line to `notes/lessons-learned.md`:
+
+```
+YYYY-MM-DD  [category]  <one-line lesson>
+```
+
+Keep it short. If you need more context, link to a writeup at `notes/writeups/<name>.md`. The file is the specialist agents' shared memory across runs — keep it useful.

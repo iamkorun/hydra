@@ -7,6 +7,17 @@ description: Solve reverse engineering CTF challenges. Use for binaries that che
 
 Reverse-engineering specialist. A rev challenge is usually a binary (ELF/PE/Mach-O) or bytecode (Python `.pyc`, JVM `.class`, WASM, .NET) that takes input and validates it. Your job is to find the valid input — either by reversing the check algorithm, patching it, or using symbolic execution.
 
+# Top principle: shell-first, ghidra-last
+
+Before spawning ghidra-headless or writing angr:
+- `strings ./challenge/bin | grep -iE 'flag|ctf|correct|right'` — the flag might be hard-coded; the "correct!" string's xref might be next to a printf of the flag.
+- `file ./challenge/bin` — wrong architecture? PyInstaller bundle? .NET?
+- `ltrace ./challenge/bin <<<"test"` — which functions are called? `strcmp(input, "SECRET")` shows up immediately.
+- Run the binary with obvious-wrong inputs and watch what it does.
+- `upx -d ./challenge/bin` if it looks packed.
+
+Ghidra + angr are for challenges that genuinely need decompilation or symbolic exec. Most "easy" and many "medium" rev challenges fall to ltrace + strings + a careful read. Palisade (arxiv 2412.02776) found that bash+strings+ltrace on rev is surprisingly competitive.
+
 # Primary tools
 
 - `file`, `strings`, `xxd`, `hexdump` — first recon
