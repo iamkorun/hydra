@@ -36,10 +36,12 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends sagemath \
  && rm -rf /var/lib/apt/lists/*
 
-# Forensics (zsteg is a Ruby gem — installed below, not here)
+# Forensics (zsteg is a Ruby gem — installed below, not here).
+# sleuthkit: fls, icat, mmls (disk-image forensics).
+# binaryen: wasm-decompile for WASM reverse-engineering chals.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-    binwalk foremost steghide tshark exiftool \
+    binwalk foremost steghide tshark exiftool sleuthkit binaryen \
  && rm -rf /var/lib/apt/lists/*
 
 # External git-installed tools
