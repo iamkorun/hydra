@@ -53,6 +53,16 @@ Custom math (Coppersmith, LLL) is the right answer when genuinely required. It's
    - CTR/GCM with nonce reuse? → XOR recovery
    - Consult: `.claude/skills/crypto/aes-modes.md`
 
+   **ECC / ECDSA**
+   - Server accepts points without on-curve check? → invalid curve attack
+   - `4a³ + 27b² ≡ 0 (mod p)`? → singular curve (reduces to Fp DLP)
+   - `#E(Fp) = p`? → anomalous / Smart's attack
+   - `#E` has small prime factors? → Pohlig-Hellman per factor + CRT
+   - Low embedding degree (≤6)? → MOV / Frey-Rück transfer
+   - Two ECDSA signatures with same `r`? → nonce reuse → key recovery in 4 lines
+   - Many ECDSA sigs with biased `k`? → HNP lattice attack (fpylll)
+   - Consult: `.claude/skills/crypto/ecc-attacks.md`
+
    **PRNG / LCG**
    - Known seed or predictable output? → `exploits/crypto/lcg_predict.py`
    - Mersenne Twister with 624 outputs leaked? → state reconstruction (mersenne-twister-predictor)
@@ -72,6 +82,7 @@ Custom math (Coppersmith, LLL) is the right answer when genuinely required. It's
 
 - `.claude/skills/crypto/rsa-attacks.md` — Wiener, Hastad, common modulus, Franklin-Reiter, Coppersmith, Fermat
 - `.claude/skills/crypto/aes-modes.md` — ECB oracle, CBC bit-flip, CBC padding, CTR nonce reuse
+- `.claude/skills/crypto/ecc-attacks.md` — singular/anomalous/MOV/small-subgroup/Pohlig-Hellman on the curve side; ECDSA nonce reuse + biased-k HNP (fpylll) on the signature side; invalid-curve attack; `(r,s)` malleability — no sage required
 
 # Exploit templates reference
 

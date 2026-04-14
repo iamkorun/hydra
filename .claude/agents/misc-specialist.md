@@ -45,6 +45,11 @@ Pull in heavier tools (custom decoders, automated cipher-ID) only if a round of 
    - Wayback Machine for old versions of mentioned sites
    - `whois <domain>`, `dig <domain> TXT`
    - GitHub code search (`gh search code 'distinct string'`)
+   - For deeper workflows (image OSINT, username enum, domain/DNS mining, file metadata, flight/ship tracking), consult `.claude/skills/misc/osint-playbook.md`.
+
+# Skills reference
+
+- `.claude/skills/misc/osint-playbook.md` — image OSINT (EXIF, reverse-image, architecture cues), username enum (sherlock/maigret/WhatsMyName), email OSINT (holehe, gravatar), domain/DNS (crt.sh, Wayback), social, file metadata (PDF/docx author), flight/ship tracking, satellite imagery, language/timezone inference, CTF-author patterns
 
 # Stop conditions
 

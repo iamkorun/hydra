@@ -44,7 +44,7 @@ For long-lived remote sessions (nc, gdb), use tmux per `.claude/skills/pwn/tmux-
 5. **Consult skill** — once class identified, read the matching skill:
    - `.claude/skills/pwn/rop-chains.md` — any ret2* or stack pivot
    - `.claude/skills/pwn/format-string.md` — any `%n` write or fmt leak
-   - (heap skill deferred; if heap: write solver from scratch using pwntools)
+   - `.claude/skills/pwn/heap-exploitation.md` — tcache / fastbin / unsorted / UAF / FSOP / house-of-* on glibc 2.31+
 6. **Copy exploit template** if applicable:
    - `exploits/pwn/ret2libc.py` — classic ret2libc
    - `exploits/pwn/fmtstr_leak.py` — fmtstr leak + GOT overwrite
@@ -73,6 +73,7 @@ For long-lived remote sessions (nc, gdb), use tmux per `.claude/skills/pwn/tmux-
 
 - `.claude/skills/pwn/rop-chains.md` — ROPgadget workflow, stack pivot, ret2csu
 - `.claude/skills/pwn/format-string.md` — `%n` writes, arbitrary read, GOT overwrite
+- `.claude/skills/pwn/heap-exploitation.md` — glibc 2.31–2.39+ primitives: tcache poisoning (safe-linking bypass), fastbin dup, unsorted-bin leak, UAF/double-free, FSOP (house_of_apple2/kiwi/cat), IO_FILE arb r/w, end-to-end skeleton
 
 # Exploit templates reference
 

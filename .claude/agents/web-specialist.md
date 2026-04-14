@@ -57,6 +57,7 @@ Automated scanners are powerful but noisy — running sqlmap for 10 minutes when
    - `.claude/skills/web/sqli-cheatsheet.md`
    - `.claude/skills/web/ssti-bypass.md`
    - `.claude/skills/web/jwt-attacks.md`
+   - `.claude/skills/web/ssrf.md`
 4. Adapt exploit template to `./work/solve.py`.
 5. Iterate. ~5 failed variations per vuln class.
 
@@ -65,6 +66,7 @@ Automated scanners are powerful but noisy — running sqlmap for 10 minutes when
 - `.claude/skills/web/sqli-cheatsheet.md`
 - `.claude/skills/web/ssti-bypass.md`
 - `.claude/skills/web/jwt-attacks.md`
+- `.claude/skills/web/ssrf.md` — URL-fetch sinks, cloud metadata (AWS IMDSv1/v2, GCP, Azure), IPv4 obfuscation + DNS rebinding + userinfo bypass, gopher for Redis/Memcached/FastCGI RCE, blind SSRF via interactsh/self-hosted OOB, PDF-generator chromium SSRF
 
 # Exploit templates reference
 
