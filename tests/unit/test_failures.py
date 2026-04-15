@@ -85,3 +85,22 @@ def test_summary_table(tmp_path: Path):
     assert "| a" in s
     assert "| b" in s
     assert "timeout" in s
+
+
+def test_summary_table_escapes_pipes_in_reason(tmp_path: Path):
+    """A reason containing `|` would split the row into extra columns,
+    misaligning every downstream cell. Pipes must be backslash-escaped."""
+    results = [_mk_result("x", "error", "exec failed: cmd|with|pipes")]
+    failures_dir = tmp_path / "failures"
+    failures_dir.mkdir()
+    write_failures_summary(results, failures_dir=failures_dir)
+    s = (failures_dir / "SUMMARY.md").read_text()
+    # The row must contain the escaped form, not the raw pipe.
+    assert r"cmd\|with\|pipes" in s
+    # And the row should still have exactly 5 `|` chars (4 cell separators
+    # plus the terminating one on each side → 5 per pipe-table row).
+    data_line = [ln for ln in s.splitlines() if ln.startswith("| x ")][0]
+    # Count only UNESCAPED pipes.
+    import re
+    unescaped = re.findall(r"(?<!\\)\|", data_line)
+    assert len(unescaped) == 5, f"got {len(unescaped)} unescaped pipes: {data_line}"

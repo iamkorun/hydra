@@ -70,10 +70,17 @@ def write_failures_summary(results: list[Result], *, failures_dir: Path) -> Path
         "|-----------|--------|----------|--------|",
     ]
     for r in failing:
-        reason = (r.reason or "—").replace("\n", " ")[:80]
-        lines.append(f"| {r.name} | {r.status} | {r.duration_s:.1f}s | {reason} |")
+        reason = _table_cell(r.reason or "—")[:80]
+        name = _table_cell(r.name)
+        status = _table_cell(r.status)
+        lines.append(f"| {name} | {status} | {r.duration_s:.1f}s | {reason} |")
     summary_path.write_text("\n".join(lines) + "\n")
     return summary_path
+
+
+def _table_cell(s: str) -> str:
+    """Escape markdown-table-breaking characters in a cell value."""
+    return s.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ").replace("\r", " ")
 
 def _tail(path: Path, *, n: int) -> str:
     if not path.exists():
