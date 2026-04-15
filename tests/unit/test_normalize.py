@@ -101,6 +101,18 @@ def test_duplicate_names_skip_existing_suffix():
     assert len(set(names)) == len(names)
 
 
+def test_non_string_file_path_raises_clear_error():
+    """Malformed input where a file path is not a string must surface a
+    NormalizationError with the entry index, not an opaque TypeError."""
+    with pytest.raises(NormalizationError, match="entry #0.*file path must be a string"):
+        normalize_challenges([{"name": "x", "description": "y", "files": [1, 2]}])
+    with pytest.raises(NormalizationError, match="entry #1.*file path must be a string"):
+        normalize_challenges([
+            {"name": "ok", "description": "y", "files": ["/tmp/a"]},
+            {"name": "bad", "description": "y", "files": [{"nested": "object"}]},
+        ])
+
+
 def test_duplicate_names_many_collisions():
     """Monotonic suffix counter must keep climbing even when raw input
     contains a mix of 'x' and 'x-N' forms."""

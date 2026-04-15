@@ -38,7 +38,14 @@ def _normalize_one(raw: dict[str, Any], idx: int) -> Challenge:
     name = _first(raw, _NAME_KEYS)
     desc = _first(raw, _DESC_KEYS) or ""
     files_raw = _as_list(_first(raw, _FILES_KEYS))
-    files = [Path(p) for p in files_raw]
+    files: list[Path] = []
+    for f in files_raw:
+        if not isinstance(f, (str, Path)):
+            raise NormalizationError(
+                f"entry #{idx} ({name!r}): file path must be a string, "
+                f"got {type(f).__name__}: {f!r}"
+            )
+        files.append(Path(f))
 
     if not name:
         seed = (desc + str(files)).encode()
