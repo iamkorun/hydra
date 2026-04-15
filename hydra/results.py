@@ -36,10 +36,21 @@ class ResultsWriter:
             os.fsync(f.fileno())
         self._write_flags_json()
 
+    def _latest_by_name(self) -> list[Result]:
+        # Coalesce by name: a challenge may appear multiple times in the
+        # jsonl (e.g., a prior-run failure followed by a --retry-failed
+        # success). The latest entry is authoritative; without coalescing,
+        # the same name could appear in both `data` and `__failed__` (or
+        # be counted twice in the summary).
+        latest: dict[str, Result] = {}
+        for r in self._results:
+            latest[r.name] = r
+        return list(latest.values())
+
     def _write_flags_json(self) -> None:
         data: dict = {}
         failed: list[str] = []
-        for r in self._results:
+        for r in self._latest_by_name():
             if r.status in ("solved", "solved_uncertain") and r.flag:
                 data[r.name] = r.flag
             else:
@@ -49,16 +60,17 @@ class ResultsWriter:
         _atomic_write(self.flags_path, json.dumps(data, indent=2, ensure_ascii=False))
 
     def finalize(self, *, run_id: str) -> None:
+        results = self._latest_by_name()
         summary = {
-            "total": len(self._results),
-            "solved": sum(1 for r in self._results if r.status == "solved"),
+            "total": len(results),
+            "solved": sum(1 for r in results if r.status == "solved"),
             "solved_uncertain": sum(
-                1 for r in self._results if r.status == "solved_uncertain"
+                1 for r in results if r.status == "solved_uncertain"
             ),
-            "failed": sum(1 for r in self._results if r.status == "failed"),
-            "timeout": sum(1 for r in self._results if r.status == "timeout"),
-            "error": sum(1 for r in self._results if r.status == "error"),
-            "total_duration_s": sum(r.duration_s for r in self._results),
+            "failed": sum(1 for r in results if r.status == "failed"),
+            "timeout": sum(1 for r in results if r.status == "timeout"),
+            "error": sum(1 for r in results if r.status == "error"),
+            "total_duration_s": sum(r.duration_s for r in results),
         }
         if summary["total"] > 0:
             summary["solve_rate"] = round(summary["solved"] / summary["total"], 4)
@@ -67,7 +79,7 @@ class ResultsWriter:
         payload = {
             "run_id": run_id,
             "summary": summary,
-            "challenges": [asdict(r) for r in self._results],
+            "challenges": [asdict(r) for r in results],
         }
         _atomic_write(
             self.results_path,
