@@ -292,9 +292,29 @@ def _print_summary(writer: ResultsWriter, *, wall_s: float) -> None:
         flush=True,
     )
 
+def _default_out_dir(challenges_path: str, cwd: Path) -> Path:
+    """Pick the root dir used for default output paths.
+
+    Derived from the input JSON filename so running `hydra phase-1.json`
+    and `hydra phase-2.json` back-to-back in the same cwd produces
+    `./phase-1/` and `./phase-2/` with independent runs/, results.*,
+    flags.json, and failures/. Before: both dumped into cwd, and phase-2
+    silently inherited phase-1's jsonl as resume state.
+
+    Stdin (`-`) falls back to cwd since there's no filename to key off.
+    Explicit --runs-dir / --results / --jsonl / --flags-out still win,
+    so existing pipelines aren't broken.
+    """
+    if challenges_path == "-":
+        return cwd
+    stem = Path(challenges_path).stem
+    return cwd / stem if stem else cwd
+
+
 def main(argv: list[str] | None = None) -> int:
     ns = build_parser().parse_args(argv)
-    cfg = resolve_config(ns, root=Path.cwd())
+    out_dir = _default_out_dir(ns.challenges, Path.cwd())
+    cfg = resolve_config(ns, root=out_dir)
     return asyncio.run(_run(cfg))
 
 if __name__ == "__main__":

@@ -85,10 +85,10 @@ Optional: `category`, `points`, `hints`, `remote`.
 | `--attempts K` | `1` | pass@k — K parallel attempts per challenge, first flag wins |
 | `--retry-failed` | off | Re-run entries marked failed / timeout / error |
 | `--only A,B,C` | — | Comma-separated names to run (skip others) |
-| `--runs-dir PATH` | `./runs` | Per-challenge artifact dir |
-| `--results PATH` | `./results.json` | Aggregate output |
-| `--jsonl PATH` | `./results.jsonl` | Streamed one-line-per-challenge |
-| `--flags-out PATH` | `./flags.json` | Flags-only output |
+| `--runs-dir PATH` | `./<json-stem>/runs` | Per-challenge artifact dir |
+| `--results PATH` | `./<json-stem>/results.json` | Aggregate output |
+| `--jsonl PATH` | `./<json-stem>/results.jsonl` | Streamed one-line-per-challenge |
+| `--flags-out PATH` | `./<json-stem>/flags.json` | Flags-only output |
 | `--credentials-dir PATH` | `~/.claude` | Host dir mounted at `/root/.claude:ro` |
 | `--use-api-key` | off | Force API-key mode even if subscription is found |
 | `--dry-run` | off | Normalize + prepare workdirs, don't run |
@@ -98,15 +98,19 @@ Run `hydra --help` for the canonical list.
 
 ## Output files
 
+All outputs default to `./<json-stem>/` (e.g. `hydra phase-1.json` writes
+into `./phase-1/`). Stdin (`-`) falls back to cwd. Any explicit
+`--runs-dir` / `--results` / `--jsonl` / `--flags-out` overrides win.
+
 | File | Contents |
 |---|---|
-| `flags.json` | `{"name": "flag", ..., "__failed__": [names]}` — ready for platform upload |
-| `results.json` | Final aggregate with per-challenge status and summary stats |
-| `results.jsonl` | One line per finished challenge, appended live |
-| `runs/<name>/` | Input files, agent scratch, full transcript logs |
-| `runs/<name>/logs/claude.stdout.jsonl` | Full agent transcript, streamed live (`tail -f` works) |
-| `failures/<name>.md` | Postmortem + last 50 log lines per unsolved challenge |
-| `failures/SUMMARY.md` | Index of all failures with a reason column |
+| `<json-stem>/flags.json` | `{"name": "flag", ..., "__failed__": [names]}` — ready for platform upload |
+| `<json-stem>/results.json` | Final aggregate with per-challenge status and summary stats |
+| `<json-stem>/results.jsonl` | One line per finished challenge, appended live |
+| `<json-stem>/runs/<name>/` | Input files, agent scratch, full transcript logs |
+| `<json-stem>/runs/<name>/logs/claude.stdout.jsonl` | Full agent transcript, streamed live (`tail -f` works) |
+| `<json-stem>/failures/<name>.md` | Postmortem + last 50 log lines per unsolved challenge |
+| `<json-stem>/failures/SUMMARY.md` | Index of all failures with a reason column |
 
 ## Resume
 

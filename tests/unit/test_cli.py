@@ -146,6 +146,15 @@ def test_only_filter_normalizes_to_safe_name(monkeypatch, tmp_path):
     assert cfg.only_filter == {"foo-bar", "baz-qux"}
 
 
+def test_default_out_dir_from_json_stem(tmp_path):
+    from hydra.cli import _default_out_dir
+    # Filename → cwd/<stem>/ so back-to-back runs don't collide.
+    assert _default_out_dir("phase-1.json", tmp_path) == tmp_path / "phase-1"
+    assert _default_out_dir("/abs/path/phase-2.json", tmp_path) == tmp_path / "phase-2"
+    # Stdin has no filename → fall back to cwd (caller's problem to segregate).
+    assert _default_out_dir("-", tmp_path) == tmp_path
+
+
 def test_resolve_parallel_defaults_to_challenge_count():
     from hydra.cli import _resolve_parallel
     # Unspecified: fan out to every challenge.
