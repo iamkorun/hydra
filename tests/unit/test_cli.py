@@ -1,5 +1,9 @@
+import asyncio
+import json
+from pathlib import Path
+
 import pytest
-from hydra.cli import build_parser, resolve_config
+from hydra.cli import ResolvedConfig, build_parser, resolve_config, _run
 
 
 def _patch_default_creds(monkeypatch, tmp_path, *, exists: bool, logged_in: bool):
@@ -126,3 +130,78 @@ def test_only_filter_applies(monkeypatch, tmp_path):
     ns = build_parser().parse_args([str(tmp_path / "x.json"), "--only", "a,c"])
     cfg = resolve_config(ns, root=tmp_path)
     assert cfg.only_filter == {"a", "c"}
+
+
+def test_only_filter_normalizes_to_safe_name(monkeypatch, tmp_path):
+    """Challenge names are sanitized by safe_name at normalize time. The
+    --only filter must apply the same transform so a user who passes the
+    raw JSON name (e.g. 'foo bar') still matches the stored 'foo-bar'."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk")
+    _patch_default_creds(monkeypatch, tmp_path, exists=False, logged_in=False)
+    ns = build_parser().parse_args([
+        str(tmp_path / "x.json"),
+        "--only", "foo bar, baz/qux",
+    ])
+    cfg = resolve_config(ns, root=tmp_path)
+    assert cfg.only_filter == {"foo-bar", "baz-qux"}
+
+
+def test_only_filter_empty_string_returns_none():
+    from hydra.cli import _parse_only
+    assert _parse_only(None) is None
+    assert _parse_only("") is None
+    assert _parse_only("   ") is None
+    # Trailing/empty commas are dropped.
+    assert _parse_only("a,,b,") == {"a", "b"}
+
+
+def _mk_resolved(tmp_path: Path, **overrides) -> ResolvedConfig:
+    base = {
+        "challenges_path": str(tmp_path / "chal.json"),
+        "parallel": 1,
+        "timeout": 5,
+        "model": "m",
+        "runs_dir": tmp_path / "runs",
+        "results_path": tmp_path / "results.json",
+        "jsonl_path": tmp_path / "results.jsonl",
+        "flags_path": tmp_path / "flags.json",
+        "failures_dir": tmp_path / "failures",
+        "retry_failed": False,
+        "only_filter": None,
+        "dry_run": True,
+        "rebuild_image": False,
+        "api_key": "sk",
+    }
+    base.update(overrides)
+    return ResolvedConfig(**base)
+
+
+def test_run_returns_2_when_only_filter_matches_nothing(tmp_path, capsys):
+    """A typo'd --only should not silently run zero challenges."""
+    (tmp_path / "chal.json").write_text(json.dumps([
+        {"name": "alpha", "description": "x"},
+        {"name": "beta", "description": "y"},
+    ]))
+    cfg = _mk_resolved(tmp_path, only_filter={"does-not-exist"})
+    rc = asyncio.run(_run(cfg))
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "does-not-exist" in err
+    assert "alpha" in err  # lists available names
+
+
+def test_run_dry_run_with_matching_only_returns_0(tmp_path):
+    (tmp_path / "chal.json").write_text(json.dumps([
+        {"name": "alpha", "description": "x"},
+        {"name": "beta", "description": "y"},
+    ]))
+    cfg = _mk_resolved(tmp_path, only_filter={"alpha"})
+    assert asyncio.run(_run(cfg)) == 0
+
+
+def test_run_returns_2_on_normalization_error(tmp_path, capsys):
+    (tmp_path / "chal.json").write_text(json.dumps([{"name": "x"}]))  # no desc, no files
+    cfg = _mk_resolved(tmp_path)
+    rc = asyncio.run(_run(cfg))
+    assert rc == 2
+    assert "error" in capsys.readouterr().err

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from hydra.normalize import normalize_challenges, NormalizationError
+from hydra.normalize import normalize_challenges, NormalizationError, safe_name
 from hydra.orchestrator import Orchestrator, OrchestratorConfig
 from hydra.results import ResultsWriter, load_jsonl_names
 
@@ -142,9 +142,16 @@ def _looks_logged_in(claude_dir: Path) -> bool:
     return any((claude_dir / n).is_file() for n in candidates)
 
 def _parse_only(spec: str | None) -> set[str] | None:
+    # Apply the same safe_name() transform that normalize_challenges uses,
+    # so users can pass either the raw JSON name or the sanitized form. A
+    # raw name like "foo bar" would otherwise silently match nothing once
+    # the challenge has been renamed to "foo-bar".
     if not spec:
         return None
-    return {s.strip() for s in spec.split(",") if s.strip()}
+    names = {s.strip() for s in spec.split(",") if s.strip()}
+    if not names:
+        return None
+    return {safe_name(n) for n in names}
 
 def _read_input(path: str) -> list:
     raw = sys.stdin.read() if path == "-" else Path(path).read_text()
@@ -173,7 +180,18 @@ async def _run(cfg: ResolvedConfig) -> int:
         return 2
 
     if cfg.only_filter is not None:
-        challenges = [c for c in challenges if c.name in cfg.only_filter]
+        filtered = [c for c in challenges if c.name in cfg.only_filter]
+        if not filtered:
+            # Silent empty runs are a classic user trap. Flag it but keep
+            # returning 2 so shell pipelines can detect the mistake.
+            available = ", ".join(sorted(c.name for c in challenges)[:10])
+            print(
+                f"error: --only {sorted(cfg.only_filter)} matched no "
+                f"challenges. Available (first 10): {available}",
+                file=sys.stderr,
+            )
+            return 2
+        challenges = filtered
 
     skip = _compute_skips(cfg)
 
