@@ -153,6 +153,50 @@ async def test_requires_either_creds_or_key(tmp_path, patch_subprocess):
         )
 
 
+async def test_container_name_is_ascii_even_for_unicode_challenge_name(
+    tmp_path, patch_subprocess
+):
+    """Docker requires container names match [a-zA-Z0-9][a-zA-Z0-9_.-]*.
+    Challenge names can legitimately contain unicode (filesystem-safe), so
+    the --name arg must be sanitized separately or Docker rejects the run."""
+    wd = tmp_path / "runs" / "x"
+    (wd / "logs").mkdir(parents=True)
+
+    await run_worker(
+        name="รหัสลับ", workdir=wd, image="hydra-worker",
+        api_key="sk", model="m", timeout_s=30,
+        container_cpus=1, container_memory="1g",
+        prompt_volumes={},
+    )
+    cmd = patch_subprocess["cmd"]
+    name_idx = list(cmd).index("--name")
+    container_name = cmd[name_idx + 1]
+    assert container_name.isascii(), container_name
+    import re as _re
+    assert _re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", container_name), container_name
+    assert container_name.startswith("hydra-")
+
+
+async def test_docker_safe_name_helper():
+    """Unit-level check for the sanitizer used in container naming."""
+    from hydra.docker_worker import _docker_safe_name
+    assert _docker_safe_name("simple-name") == "simple-name"
+    # Pure-unicode name collapses to underscores, which get lstripped; falls
+    # back to placeholder so `hydra-<name>-<uuid>` still starts alphanumeric
+    # once the `hydra-` prefix is added.
+    assert _docker_safe_name("รหัสลับ") == "x"
+    assert _docker_safe_name("a/b c:d") == "a_b_c_d"
+    # Empty-after-cleaning falls back to placeholder.
+    assert _docker_safe_name("???") == "x"
+    # Leading non-alphanumeric must be stripped.
+    assert _docker_safe_name("-start") == "start"
+    assert _docker_safe_name("_start") == "start"
+    # Mixed ASCII + unicode keeps the ASCII portion.
+    assert _docker_safe_name("webรถ1") == "web__1"
+    # Long names are truncated to max_len.
+    assert len(_docker_safe_name("a" * 100)) == 32
+
+
 async def test_credentials_preferred_over_api_key(tmp_path, patch_subprocess):
     """If both are supplied, credentials_dir wins and api_key is ignored."""
     wd = tmp_path / "runs" / "x"

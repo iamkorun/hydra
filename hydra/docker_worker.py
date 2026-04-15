@@ -1,10 +1,21 @@
 import asyncio
 import os
+import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_ENGINE = os.environ.get("HYDRA_CONTAINER_ENGINE", "docker")
+
+# Docker container names must match [a-zA-Z0-9][a-zA-Z0-9_.-]*. Challenge
+# names survive normalize.safe_name() but that preserves non-ASCII (unicode
+# is valid on the filesystem), so we need a stricter pass for --name.
+_DOCKER_NAME_SANITIZE = re.compile(r"[^a-zA-Z0-9_-]")
+
+
+def _docker_safe_name(name: str, *, max_len: int = 32) -> str:
+    cleaned = _DOCKER_NAME_SANITIZE.sub("_", name)[:max_len].lstrip("-._") or "x"
+    return cleaned
 
 _PROMPT = (
     "Solve the CTF challenge in this workspace. Read CLAUDE.md first, "
@@ -53,7 +64,7 @@ async def run_worker(
             "run_worker requires either credentials_dir (preferred) or api_key"
         )
 
-    container_name = f"hydra-{name}-{uuid.uuid4().hex[:8]}"
+    container_name = f"hydra-{_docker_safe_name(name)}-{uuid.uuid4().hex[:8]}"
 
     cmd = [
         engine, "run", "--rm",
