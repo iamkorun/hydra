@@ -93,6 +93,19 @@ Added direct unit coverage for `_compute_skips` resume semantics
 (solved + failed skipped by default; `--retry-failed` drops failed;
 missing jsonl → empty skip set).  Commit `4df95d4`.
 
+## Post-iteration-12 additions
+
+- `refactor(docker_worker)`: `asyncio.get_event_loop().time()` → plain
+  `time.monotonic()` — simpler, no deprecated-call surface (`0f050df`).
+- `refactor(models)`: `Challenge` and `Result` made `frozen=True`
+  dataclasses — nothing mutates them in place; aligns with the
+  project's immutability preference (`ffe2ff9`).
+- `test(cli)`: direct unit coverage for `_compute_skills` (`4df95d4`).
+
+Final tally: 96/96 tests passing, 0 ruff warnings under E+F+B+UP, 13
+session commits, 10 real bug fixes, 2 refactors, 1 test-coverage pass,
+1 lint-config upgrade, 1 finalization commit.
+
 ## Follow-ups for the human
 
 - None required to merge.  Optional future work:
@@ -105,3 +118,19 @@ missing jsonl → empty skip set).  Commit `4df95d4`.
   - `failures.py._tail` loads the whole transcript with
     `read_text().splitlines()[-n:]`.  Harmless at current scales; a
     reverse-seek reader would help for multi-GB transcripts.
+
+### Note on the ralph-loop plugin stop hook
+
+While finishing this pass, the plugin stop hook kept re-firing even
+after the exit criteria were met and `<promise>COMPLETE</promise>`
+was emitted.  Root cause is in the plugin, not this repo:
+`~/.claude/plugins/cache/claude-plugins-official/ralph-loop/1.0.0/hooks/stop-hook.sh`
+runs `grep '"role":"assistant"' "$TRANSCRIPT_PATH"` without `-a`.
+Claude's transcript JSONL contains thinking-block encrypted
+signatures whose bytes trigger grep's binary-file detection, so grep
+silently suppresses all output after the first "binary" byte.  The
+hook's `tail -n 100` then sees a stale pre-loop prefix and the
+promise never matches.  Fix upstream by adding `-a` (or
+`--binary-files=text`) to the two grep invocations in `stop-hook.sh`.
+Unblocking this session required deleting `.claude/ralph-loop.local.md`
+because the completion promise was genuinely true but undetectable.
