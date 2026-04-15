@@ -85,6 +85,35 @@ def test_duplicate_names_appended_suffix():
     assert a.name == "x"
     assert b.name == "x-2"
 
+
+def test_duplicate_names_skip_existing_suffix():
+    """Raw input may already contain the suffix we'd generate. The de-dup
+    loop must skip any candidate that's already taken so no two challenges
+    share a name (and therefore a workdir)."""
+    out = normalize_challenges([
+        {"name": "foo", "description": "1"},
+        {"name": "foo-2", "description": "2"},
+        {"name": "foo", "description": "3"},
+        {"name": "foo", "description": "4"},
+    ])
+    names = [c.name for c in out]
+    assert names == ["foo", "foo-2", "foo-3", "foo-4"]
+    assert len(set(names)) == len(names)
+
+
+def test_duplicate_names_many_collisions():
+    """Monotonic suffix counter must keep climbing even when raw input
+    contains a mix of 'x' and 'x-N' forms."""
+    out = normalize_challenges([
+        {"name": "x", "description": "a"},
+        {"name": "x", "description": "b"},   # -> x-2
+        {"name": "x-3", "description": "c"}, # raw
+        {"name": "x", "description": "d"},   # -> x-4 (skip x-3)
+        {"name": "x", "description": "e"},   # -> x-5
+    ])
+    names = [c.name for c in out]
+    assert names == ["x", "x-2", "x-3", "x-4", "x-5"]
+
 def test_safe_name_for_workdir():
     from hydra.normalize import safe_name
     assert safe_name("hello world") == "hello-world"

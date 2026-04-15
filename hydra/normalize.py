@@ -70,16 +70,27 @@ def normalize_challenges(raw: Any) -> list[Challenge]:
         raise NormalizationError("top-level JSON must be a list")
 
     out: list[Challenge] = []
-    seen: dict[str, int] = {}
+    taken: set[str] = set()
+    base_counts: dict[str, int] = {}
     for idx, entry in enumerate(raw):
         if not isinstance(entry, dict):
             raise NormalizationError(f"entry #{idx} is not an object")
         c = _normalize_one(entry, idx)
-        # De-duplicate names by appending -2, -3, ...
+        # De-duplicate names by appending -2, -3, ...  Guard against a
+        # raw name already matching the suffix we would have generated
+        # (e.g. ["foo", "foo", "foo-2"] must not produce two "foo-2"s).
         base = c.name
-        count = seen.get(base, 0)
-        if count > 0:
-            c = Challenge(**{**c.__dict__, "name": f"{base}-{count+1}"})
-        seen[base] = count + 1
+        if base not in taken:
+            taken.add(base)
+            base_counts[base] = 1
+        else:
+            n = base_counts[base] + 1
+            candidate = f"{base}-{n}"
+            while candidate in taken:
+                n += 1
+                candidate = f"{base}-{n}"
+            base_counts[base] = n
+            taken.add(candidate)
+            c = Challenge(**{**c.__dict__, "name": candidate})
         out.append(c)
     return out
