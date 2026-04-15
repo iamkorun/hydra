@@ -4,7 +4,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 from hydra.normalize import normalize_challenges, NormalizationError, safe_name
@@ -219,7 +219,7 @@ async def _run(cfg: ResolvedConfig) -> int:
         attempts=cfg.attempts,
     )
     orch = Orchestrator(orch_cfg, writer=writer)
-    run_id = datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z")
+    run_id = datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
     try:
         await orch.run(challenges)
     finally:

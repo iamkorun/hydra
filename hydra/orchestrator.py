@@ -1,6 +1,6 @@
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from hydra.models import Challenge, Result
 from hydra.workdir import build_workdir
@@ -149,7 +149,7 @@ class Orchestrator:
         return last
 
 def _now_iso() -> str:
-    return datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
 
 def _print_status(r: Result) -> None:
     sym = "✓" if r.status == "solved" else "✗"

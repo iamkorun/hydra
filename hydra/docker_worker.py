@@ -101,7 +101,7 @@ async def run_worker(
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
             proc.communicate(), timeout=timeout_s
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         timed_out = True
         await _docker_stop(engine, container_name)
         proc.kill()
@@ -109,7 +109,7 @@ async def run_worker(
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 proc.communicate(), timeout=15
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await proc.wait()
             stdout_bytes, stderr_bytes = b"", b""
     except asyncio.CancelledError:
@@ -117,7 +117,7 @@ async def run_worker(
         proc.kill()
         try:
             await asyncio.wait_for(proc.wait(), timeout=15)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
         raise
 
@@ -147,5 +147,5 @@ async def _docker_stop(engine: str, container_name: str) -> None:
     )
     try:
         await asyncio.wait_for(proc.wait(), timeout=15)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass

@@ -31,11 +31,18 @@ testpaths = ["tests/unit", "tests/integration"]
 line-length = 100
 
 [tool.ruff.lint]
-# Default rules (E, F). Exploit templates use `from pwn import *` which is
-# the pwntools convention — don't flag it there.
+# Default rules (E, F) plus B (bugbear: catches common real bugs) and
+# UP (pyupgrade: keep code on modern 3.12+ idioms). Exploit templates
+# use `from pwn import *` which is the pwntools convention — don't flag
+# it there.
+extend-select = ["B", "UP"]
 extend-ignore = []
 
 [tool.ruff.lint.per-file-ignores]
-"exploits/**/*.py" = ["F401", "F403", "F405", "E402", "E702"]
+# Exploit templates: pwntools idioms (F401/F403/F405/E402/E702),
+# zip() without strict= (B905 — crypto code often pairs equal-length
+# sequences by construction), and %-format strings (UP031 — preserves
+# payload formatting as authored in the original writeup).
+"exploits/**/*.py" = ["F401", "F403", "F405", "E402", "E702", "B905", "UP031"]
 # Skill files and inline-runnable exploit templates intentionally leave
 # `# TODO` placeholders that the solver fills in at run-time.
