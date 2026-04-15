@@ -79,7 +79,7 @@ Optional: `category`, `points`, `hints`, `remote`.
 
 | Flag | Default | Description |
 |---|---|---|
-| `--parallel N` | `8` | Concurrent workers |
+| `--parallel N` | challenge count | Concurrent workers — defaults to the number of challenges in the input JSON |
 | `--timeout S` | `3600` | Per-challenge wall-clock (seconds) |
 | `--model NAME` | `claude-opus-4-6` | Claude model |
 | `--attempts K` | `1` | pass@k — K parallel attempts per challenge, first flag wins |

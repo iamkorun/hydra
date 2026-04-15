@@ -20,7 +20,7 @@ def test_parser_defaults():
     p = build_parser()
     ns = p.parse_args(["chal.json"])
     assert ns.challenges == "chal.json"
-    assert ns.parallel == 8
+    assert ns.parallel is None
     assert ns.timeout == 3600
     assert ns.model == "claude-opus-4-6"
     assert ns.retry_failed is False
@@ -144,6 +144,18 @@ def test_only_filter_normalizes_to_safe_name(monkeypatch, tmp_path):
     ])
     cfg = resolve_config(ns, root=tmp_path)
     assert cfg.only_filter == {"foo-bar", "baz-qux"}
+
+
+def test_resolve_parallel_defaults_to_challenge_count():
+    from hydra.cli import _resolve_parallel
+    # Unspecified: fan out to every challenge.
+    assert _resolve_parallel(None, 5) == 5
+    # Empty JSON: floor at 1 so asyncio.Semaphore doesn't deadlock.
+    assert _resolve_parallel(None, 0) == 1
+    # Explicit user value wins, even if it exceeds the challenge count
+    # (harmless — semaphore just won't saturate).
+    assert _resolve_parallel(4, 10) == 4
+    assert _resolve_parallel(20, 3) == 20
 
 
 def test_only_filter_empty_string_returns_none():

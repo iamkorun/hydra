@@ -18,7 +18,7 @@ DEFAULT_CREDENTIALS_DIR = Path.home() / ".claude"
 @dataclass
 class ResolvedConfig:
     challenges_path: str
-    parallel: int
+    parallel: int | None
     timeout: int
     model: str
     runs_dir: Path
@@ -41,7 +41,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Autonomous CTF batch solver — JSON in, flags out.",
     )
     p.add_argument("challenges", help="Path to challenges JSON (or '-' for stdin)")
-    p.add_argument("--parallel", type=int, default=8, help="Concurrent workers (containers)")
+    p.add_argument(
+        "--parallel", type=int, default=None,
+        help="Concurrent workers (containers). Default: number of challenges in the input JSON.",
+    )
     p.add_argument("--timeout", type=int, default=3600, help="Per-challenge wall-clock (s)")
     p.add_argument("--model", default=DEFAULT_MODEL, help="Claude model")
     p.add_argument(
@@ -182,6 +185,17 @@ def _prompt_volumes(root: Path | None = None) -> dict[Path, str]:
         base / "exploits": "/workspace/exploits",
     }
 
+def _resolve_parallel(requested: int | None, n_challenges: int) -> int:
+    # Default --parallel to the post-filter challenge count so unattended
+    # runs fan out fully without a manual cap. User-supplied values always
+    # win (even 0/negative — argparse trusts them; catching that here would
+    # hide a real config bug). Floor at 1 when the JSON has zero entries
+    # so asyncio.Semaphore(0) can't deadlock the orchestrator.
+    if requested is not None:
+        return requested
+    return max(1, n_challenges)
+
+
 def _compute_skips(cfg: ResolvedConfig) -> set[str]:
     solved, failed = load_jsonl_names(cfg.jsonl_path)
     skip = set(solved)
@@ -211,6 +225,8 @@ async def _run(cfg: ResolvedConfig) -> int:
             return 2
         challenges = filtered
 
+    parallel = _resolve_parallel(cfg.parallel, len(challenges))
+
     skip = _compute_skips(cfg)
 
     if cfg.dry_run:
@@ -223,7 +239,7 @@ async def _run(cfg: ResolvedConfig) -> int:
         results_path=cfg.results_path,
     )
     orch_cfg = OrchestratorConfig(
-        parallel=cfg.parallel,
+        parallel=parallel,
         timeout_s=cfg.timeout,
         model=cfg.model,
         image=cfg.image,
@@ -239,7 +255,7 @@ async def _run(cfg: ResolvedConfig) -> int:
     n_pending = len(challenges) - len(skip & {c.name for c in challenges})
     print(
         f"\u25b6 solving {n_pending} challenge(s) "
-        f"(parallel={cfg.parallel}, timeout={cfg.timeout}s, "
+        f"(parallel={parallel}, timeout={cfg.timeout}s, "
         f"attempts={cfg.attempts}, model={cfg.model})",
         flush=True,
     )
