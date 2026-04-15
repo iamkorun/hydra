@@ -111,7 +111,7 @@ class Orchestrator:
 
         tasks = [asyncio.create_task(one_slotted(i)) for i in range(k)]
         pending = set(tasks)
-        winner: tuple[Path, WorkerResult] | None = None
+        winner: tuple[Path, WorkerResult, str] | None = None  # wd, wr, flag
         last: tuple[Path, WorkerResult] | None = None
 
         try:
@@ -127,7 +127,7 @@ class Orchestrator:
                     last = (wd, wr)
                     flag = extract_flag(flag_file=wd / "flag.txt", stdout=wr.stdout)
                     if flag and not wr.timed_out:
-                        winner = (wd, wr)
+                        winner = (wd, wr, flag)
                         break
                 if winner:
                     break
@@ -138,11 +138,13 @@ class Orchestrator:
                 await asyncio.gather(*pending, return_exceptions=True)
 
         if winner:
-            # Copy the winner's flag.txt up to the conventional top-level
-            # path so external tooling sees a single source of truth.
+            # Publish the winning flag to the canonical top-level path so
+            # external tooling sees a single source of truth. The winner
+            # may have produced the flag via stdout only (empty flag.txt),
+            # so write the extracted flag string rather than copying the file.
             top_flag = self.cfg.runs_dir / c.name / "flag.txt"
-            top_flag.write_text((winner[0] / "flag.txt").read_text())
-            return winner
+            top_flag.write_text(winner[2] + "\n")
+            return winner[0], winner[1]
         assert last is not None, "all pass@k attempts cancelled without completing"
         return last
 

@@ -186,6 +186,48 @@ async def test_passk_first_flag_wins(tmp_path, monkeypatch):
     # Winner's flag copied to the top-level conventional path.
     assert (tmp_path / "runs" / "a" / "flag.txt").read_text().strip() == "flag{win-0}"
 
+async def test_passk_winner_with_stdout_only_flag(tmp_path, monkeypatch):
+    """pass@k: winning attempt may recover the flag only from stdout (empty
+    flag.txt). The canonical top-level flag.txt must still be populated with
+    the extracted flag, not an empty string copied from the winner's file."""
+    order = {"idx": 0}
+
+    async def race_worker(*args, **kwargs):
+        my_idx = order["idx"]
+        order["idx"] += 1
+        if my_idx == 0:
+            # Winner: leave flag.txt untouched (empty), flag only in stdout.
+            return WorkerResult(
+                name=kwargs["name"], exit_code=0,
+                stdout=f"FLAG: flag{{stdout-only-{my_idx}}}\n",
+                stderr="", timed_out=False, duration_s=0.01,
+            )
+        await asyncio.sleep(5)  # sibling, should be cancelled
+        return WorkerResult(
+            name=kwargs["name"], exit_code=0,
+            stdout="slow\n", stderr="", timed_out=False, duration_s=5.0,
+        )
+
+    monkeypatch.setattr("hydra.orchestrator.run_worker", race_worker)
+    writer = FakeWriter()
+    cfg = OrchestratorConfig(
+        parallel=2, timeout_s=30, model="m",
+        image="hydra-worker", api_key="sk",
+        runs_dir=tmp_path / "runs",
+        failures_dir=tmp_path / "failures",
+        prompt_volumes={},
+        attempts=2,
+    )
+    orch = Orchestrator(cfg, writer=writer)
+    await orch.run([Challenge(name="a", description="x")])
+    [r] = writer.appended
+    assert r.status == "solved"
+    assert r.flag == "flag{stdout-only-0}"
+    # Canonical top-level flag.txt must contain the flag, not be empty.
+    top_flag = (tmp_path / "runs" / "a" / "flag.txt").read_text().strip()
+    assert top_flag == "flag{stdout-only-0}"
+
+
 async def test_passk_all_fail(tmp_path, monkeypatch):
     """pass@k: if every attempt fails, result is failed with the last worker's state."""
     async def no_flag(*args, **kwargs):
