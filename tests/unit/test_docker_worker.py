@@ -3,24 +3,63 @@ from pathlib import Path
 import pytest
 from hydra.docker_worker import run_worker, WorkerResult
 
+class FakeStreamReader:
+    """Minimal asyncio.StreamReader stand-in: returns chunks up to n bytes
+    until drained, then returns b'' (EOF). close() force-drains so a killed
+    proc's streams report EOF immediately."""
+    def __init__(self, data: bytes):
+        self._data = data
+        self._pos = 0
+        self._closed = False
+
+    async def read(self, n: int) -> bytes:
+        if self._closed or self._pos >= len(self._data):
+            return b""
+        chunk = self._data[self._pos:self._pos + n]
+        self._pos += len(chunk)
+        return chunk
+
+    def close(self) -> None:
+        self._closed = True
+
+
 class FakeProc:
     def __init__(self, *, returncode=0, stdout=b"FLAG: flag{x}\n", stderr=b"", delay=0.01):
         self.returncode = returncode
-        self._stdout = stdout
-        self._stderr = stderr
+        self.stdout = FakeStreamReader(stdout)
+        self.stderr = FakeStreamReader(stderr)
         self._delay = delay
         self._killed = False
 
     async def communicate(self):
+        # Legacy API; not exercised by the streaming code path but kept
+        # so tests that still reference it compile.
         await asyncio.sleep(self._delay)
         if self._killed:
             self.returncode = -9
-        return self._stdout, self._stderr
+        data_out = b""
+        data_err = b""
+        while True:
+            c = await self.stdout.read(65536)
+            if not c:
+                break
+            data_out += c
+        while True:
+            c = await self.stderr.read(65536)
+            if not c:
+                break
+            data_err += c
+        return data_out, data_err
 
     def kill(self):
         self._killed = True
+        self.returncode = -9
+        self.stdout.close()
+        self.stderr.close()
 
     async def wait(self):
+        if not self._killed:
+            await asyncio.sleep(self._delay)
         return self.returncode
 
 @pytest.fixture
@@ -195,6 +234,116 @@ async def test_docker_safe_name_helper():
     assert _docker_safe_name("webรถ1") == "web__1"
     # Long names are truncated to max_len.
     assert len(_docker_safe_name("a" * 100)) == 32
+
+
+async def test_stdout_streamed_to_disk_during_run(tmp_path, monkeypatch):
+    """Before the streaming fix, stdout/stderr were buffered in memory and
+    only written after the container exited — so `tail -f` during a live
+    run showed nothing. Now the log file must have content *before* proc
+    exits."""
+    log_path = tmp_path / "runs" / "x" / "logs" / "claude.stdout.jsonl"
+    observed = {"mid_run_size": 0}
+
+    class SlowWaitProc:
+        """wait() deliberately yields several times so the stream task
+        has a chance to drain stdout onto disk first. We sample the file
+        size inside wait() to prove data landed on disk before wait
+        returned."""
+        def __init__(self):
+            self.returncode = None
+            self.stdout = FakeStreamReader(b"FLAG: flag{x}\n" * 100)
+            self.stderr = FakeStreamReader(b"")
+            self._killed = False
+
+        async def wait(self):
+            # Yield multiple times; the stream task should drain and flush.
+            for _ in range(20):
+                await asyncio.sleep(0.001)
+            if log_path.exists():
+                observed["mid_run_size"] = log_path.stat().st_size
+            self.returncode = 0
+            return 0
+
+        def kill(self):
+            self._killed = True
+            self.returncode = -9
+
+    proc = SlowWaitProc()
+    async def fake_create(*args, **kwargs):
+        return proc
+    monkeypatch.setattr(
+        "hydra.docker_worker.asyncio.create_subprocess_exec", fake_create
+    )
+
+    wd = tmp_path / "runs" / "x"
+    result = await run_worker(
+        name="x", workdir=wd, image="hydra-worker",
+        api_key="sk", model="m", timeout_s=30,
+        container_cpus=1, container_memory="1g",
+        prompt_volumes={},
+    )
+
+    # File was populated BEFORE wait() returned.
+    assert observed["mid_run_size"] > 0, (
+        "stdout was not written to disk during the run "
+        f"(mid-run size: {observed['mid_run_size']})"
+    )
+    # Full content landed on disk.
+    assert log_path.read_bytes() == b"FLAG: flag{x}\n" * 100
+    # And the flag is still extractable from the returned stdout.
+    assert "FLAG: flag{x}" in result.stdout
+
+
+async def test_in_memory_buffer_is_bounded(tmp_path, monkeypatch):
+    """A chatty agent (MB/GB of transcript) must not blow up RAM. The
+    in-memory buffer caps at max_stdout_buffer; the disk copy stays
+    complete."""
+    class BigProc:
+        def __init__(self):
+            self.returncode = 0
+            # 4 KB of noise, then a flag marker at the tail.
+            self.stdout = FakeStreamReader(b"A" * 4096 + b"FLAG: flag{tail}\n")
+            self.stderr = FakeStreamReader(b"")
+            self._killed = False
+
+        async def wait(self):
+            await asyncio.sleep(0.01)
+            return 0
+
+        def kill(self):
+            self._killed = True
+            self.returncode = -9
+            self.stdout.close()
+            self.stderr.close()
+
+    proc = BigProc()
+    async def fake_create(*args, **kwargs):
+        return proc
+    monkeypatch.setattr(
+        "hydra.docker_worker.asyncio.create_subprocess_exec", fake_create
+    )
+
+    wd = tmp_path / "runs" / "x"
+    # Cap in-memory tail at 512 bytes — smaller than the 4 KB prefix, so
+    # the head is dropped from RAM but preserved on disk.
+    result = await run_worker(
+        name="x", workdir=wd, image="hydra-worker",
+        api_key="sk", model="m", timeout_s=30,
+        container_cpus=1, container_memory="1g",
+        prompt_volumes={},
+        max_stdout_buffer=512,
+    )
+
+    # Returned stdout is bounded to ~512 bytes, plus at most one chunk
+    # (chunk_size=65536) worth of overshoot before trimming — with a
+    # 4 KB + marker input streamed in 64 KB reads, the stream is taken
+    # in a single chunk and then trimmed to 512 bytes. Assert the bound
+    # holds and the tail (where the flag is) survived.
+    assert len(result.stdout) <= 512 + 1, f"stdout not bounded: {len(result.stdout)}"
+    assert "FLAG: flag{tail}" in result.stdout
+    # Disk copy is complete.
+    on_disk = (wd / "logs" / "claude.stdout.jsonl").read_bytes()
+    assert len(on_disk) == 4096 + len(b"FLAG: flag{tail}\n")
 
 
 async def test_credentials_preferred_over_api_key(tmp_path, patch_subprocess):

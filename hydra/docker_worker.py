@@ -26,6 +26,15 @@ _PROMPT = (
 )
 
 
+# Peak in-memory retention per stream. Flag extraction scans `stdout`
+# from the WorkerResult, so we keep the tail — flags appear near the end
+# of a transcript. Older bytes are safely on disk already. 128 MB tail
+# handles multi-hour stream-json transcripts, and at --parallel 8 caps
+# peak RAM at ~1 GB for stdout + ~128 MB for stderr instead of unbounded.
+_DEFAULT_STDOUT_BUFFER = 128 * 1024 * 1024
+_DEFAULT_STDERR_BUFFER = 16 * 1024 * 1024
+
+
 @dataclass
 class WorkerResult:
     name: str
@@ -49,6 +58,8 @@ async def run_worker(
     api_key: str | None = None,
     credentials_dir: Path | None = None,
     engine: str = DEFAULT_ENGINE,
+    max_stdout_buffer: int = _DEFAULT_STDOUT_BUFFER,
+    max_stderr_buffer: int = _DEFAULT_STDERR_BUFFER,
 ) -> WorkerResult:
     """Run one `claude -p` CTF-solve in a Docker container.
 
@@ -59,6 +70,11 @@ async def run_worker(
       - api_key: ANTHROPIC_API_KEY, passed via `-e`.
 
     credentials_dir is preferred when both are supplied.
+
+    Output is streamed to workdir/logs/ as the container writes it (so
+    `tail -f` works during a live run) and only a bounded tail is kept
+    in memory for flag extraction — caps peak RAM no matter how chatty
+    the agent is.
     """
     if credentials_dir is None and not api_key:
         raise ValueError(
@@ -90,6 +106,12 @@ async def run_worker(
         "--output-format", "stream-json",
     ]
 
+    # Create logs dir upfront so streaming writes land somewhere real.
+    logs_dir = workdir / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    stdout_path = logs_dir / "claude.stdout.jsonl"
+    stderr_path = logs_dir / "claude.stderr.log"
+
     start = time.monotonic()
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -97,22 +119,24 @@ async def run_worker(
         stderr=asyncio.subprocess.PIPE,
     )
 
+    stdout_task = asyncio.create_task(
+        _stream_to_file(proc.stdout, stdout_path, max_buffer=max_stdout_buffer)
+    )
+    stderr_task = asyncio.create_task(
+        _stream_to_file(proc.stderr, stderr_path, max_buffer=max_stderr_buffer)
+    )
+
     timed_out = False
     try:
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout_s
-        )
+        await asyncio.wait_for(proc.wait(), timeout=timeout_s)
     except TimeoutError:
         timed_out = True
         await _docker_stop(engine, container_name)
         proc.kill()
         try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(), timeout=15
-            )
+            await asyncio.wait_for(proc.wait(), timeout=15)
         except TimeoutError:
-            await proc.wait()
-            stdout_bytes, stderr_bytes = b"", b""
+            pass
     except asyncio.CancelledError:
         await _docker_stop(engine, container_name)
         proc.kill()
@@ -120,15 +144,22 @@ async def run_worker(
             await asyncio.wait_for(proc.wait(), timeout=15)
         except TimeoutError:
             pass
+        stdout_task.cancel()
+        stderr_task.cancel()
+        await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
         raise
+
+    # Streams close when the child's pipes close; after proc exit/kill
+    # that happens quickly.
+    stream_results = await asyncio.gather(
+        stdout_task, stderr_task, return_exceptions=True
+    )
+    stdout_bytes = stream_results[0] if isinstance(stream_results[0], bytes) else b""
+    stderr_bytes = stream_results[1] if isinstance(stream_results[1], bytes) else b""
 
     duration = time.monotonic() - start
     stdout = stdout_bytes.decode(errors="replace")
     stderr = stderr_bytes.decode(errors="replace")
-
-    (workdir / "logs").mkdir(parents=True, exist_ok=True)
-    (workdir / "logs" / "claude.stdout.jsonl").write_text(stdout)
-    (workdir / "logs" / "claude.stderr.log").write_text(stderr)
 
     return WorkerResult(
         name=name,
@@ -138,6 +169,36 @@ async def run_worker(
         timed_out=timed_out,
         duration_s=duration,
     )
+
+
+async def _stream_to_file(
+    stream,
+    path: Path,
+    *,
+    max_buffer: int,
+    chunk_size: int = 65536,
+) -> bytes:
+    """Drain an async pipe to `path` while keeping a bounded tail in RAM.
+
+    The on-disk copy is complete and flushed after every chunk so
+    `tail -f runs/<name>/logs/claude.stdout.jsonl` sees live output.
+    The returned bytes hold at most `max_buffer` bytes of the *tail*,
+    which is where flags live in practice.
+    """
+    if stream is None:
+        return b""
+    buf = bytearray()
+    with path.open("wb") as f:
+        while True:
+            chunk = await stream.read(chunk_size)
+            if not chunk:
+                break
+            f.write(chunk)
+            f.flush()
+            buf.extend(chunk)
+            if len(buf) > max_buffer:
+                del buf[:-max_buffer]
+    return bytes(buf)
 
 
 async def _docker_stop(engine: str, container_name: str) -> None:
