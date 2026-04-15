@@ -26,11 +26,20 @@ Pull in heavier tools (custom decoders, automated cipher-ID) only if a round of 
    - **OSINT** (search engine, archive.org, whois, DNS, Shodan, pastebin)
    - **Programming puzzle** (generate correct input under a constraint)
    - **Multi-stage** (a forensics artifact contains a rev binary, etc. — pivot to specialist)
+   - **Named CVE / known-exploit** (prompt names a CVE, or recon pins a CMS/version with public exploits) — **go to step 3a before writing code.**
 
 3. **Common tools:**
    - `CyberChef`-style decoding: try `base64 -d`, `xxd -r -p`, `rev`, `tr 'A-Za-z' 'N-ZA-Mn-za-m'` (rot13)
    - `dcode.fr` / `quipqiup` — frequency analysis (need internet)
    - For multi-stage: once you find the next artifact, drop it in `./challenge/` and re-classify.
+
+3a. **Public PoC first, handcraft second (HARD GATE).** If the sub-type is Named CVE or a version-pinned vuln (e.g. "CMS Made Simple 2.2.8", "Apache 2.4.49"), before writing any exploit from memory:
+   ```bash
+   searchsploit <product>            # or: searchsploit -t CVE-XXXX-XXXX
+   searchsploit -m <edb-id>          # copy to ./work/
+   gh search repos 'CVE-XXXX-XXXX poc' --limit 5
+   ```
+   Run the public PoC **unmodified** against the target first. Only adapt after you've observed it behave (works, fails with a known error, gets WAF'd, etc.). Writing a from-scratch exploit for a well-known CVE because you "remember the payload" is the #1 time sink in this category.
 
 4. **Automated classical cipher detection:**
    ```python
@@ -47,16 +56,15 @@ Pull in heavier tools (custom decoders, automated cipher-ID) only if a round of 
    - GitHub code search (`gh search code 'distinct string'`)
    - For deeper workflows (image OSINT, username enum, domain/DNS mining, file metadata, flight/ship tracking), consult `.claude/skills/misc/osint-playbook.md`.
 
+6. **Iterate — but not blindly (HARD GATES).**
+   - **After 2 failed attempts on the same vector**, STOP. Run the diagnostic ladder in `.claude/skills/meta/exploit-debug.md` and write findings to `./work/exploit-debug.md` *before* any 3rd attempt. No exceptions. Most exploit failures are upstream (URL encoding, wrong endpoint, patched target, WAF) — not payload-level.
+   - **Never substitute training memory for a working exploit.** "I remember this room's creds are `mitch:secret`" is not evidence; it's fabrication. If you must take that shortcut, follow `.claude/skills/meta/no-prior-knowledge.md` and append to `./work/prior-knowledge.log` — the verifier reads this file and will auto-SUSPECT any candidate whose log shows a non-derived step. Skipping the log = the run gets rejected.
+   - **At most 5 failed variations per vuln class + 2 class pivots** before handoff.
+
 # Skills reference
 
 - `.claude/skills/misc/osint-playbook.md` — image OSINT (EXIF, reverse-image, architecture cues), username enum (sherlock/maigret/WhatsMyName), email OSINT (holehe, gravatar), domain/DNS (crt.sh, Wayback), social, file metadata (PDF/docx author), flight/ship tracking, satellite imagery, language/timezone inference, CTF-author patterns
 - `.claude/skills/misc/cipher-id.md` — classical cipher identification + solve across ~15 cipher classes: base encodings (b64/32/85/58/91/100), Caesar/ROT/Atbash, Vigenère (IC + Kasiski + column chi-square), substitution (freq + hill-climb + quadgram scorer), Playfair + bifid + trifid, transposition (rail fence + columnar + Scytale), ADFGVX, Hill (numpy), XOR w/ known plaintext, Enigma/rotor, esoteric (brainfuck/Ook/Whitespace/Malbolge/Piet/JSFuck), numerical (A1Z26/Polybius/Bacon/book), visual (QR/braille/semaphore/pigpen/dancing-men)
-
-# Meta discipline
-
-Before iterating on any exploit/decode that didn't fire:
-- `.claude/skills/meta/exploit-debug.md` — run the diagnostic ladder first; don't write v2 of a broken payload without knowing why v1 failed.
-- `.claude/skills/meta/no-prior-knowledge.md` — training memory about "this is the Simple CTF room, creds are mitch:secret" is not a substitute for deriving the value from the target. If you must take the shortcut, audit-log it to `./work/prior-knowledge.log` so the verifier can judge.
 
 # Stop conditions
 

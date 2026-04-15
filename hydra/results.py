@@ -4,6 +4,7 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 from hydra.models import Result
+from hydra.usage import Usage
 
 class ResultsWriter:
     def __init__(
@@ -29,6 +30,13 @@ class ResultsWriter:
                     continue
                 try:
                     d = json.loads(line)
+                    # usage was added after v0: tolerate both nested-dict form
+                    # (new) and missing form (legacy jsonl from older runs).
+                    u = d.get("usage")
+                    if isinstance(u, dict):
+                        d["usage"] = Usage(**u)
+                    elif u is None:
+                        d.pop("usage", None)
                     self._results.append(Result(**d))
                 except (json.JSONDecodeError, TypeError, ValueError):
                     # Tolerate malformed or schema-drifted lines during
@@ -79,6 +87,15 @@ class ResultsWriter:
             "timeout": sum(1 for r in results if r.status == "timeout"),
             "error": sum(1 for r in results if r.status == "error"),
             "total_duration_s": sum(r.duration_s for r in results),
+            "total_cost_usd": round(sum(r.usage.cost_usd for r in results), 6),
+            "total_input_tokens": sum(r.usage.input_tokens for r in results),
+            "total_output_tokens": sum(r.usage.output_tokens for r in results),
+            "total_cache_read_tokens": sum(
+                r.usage.cache_read_input_tokens for r in results
+            ),
+            "total_cache_creation_tokens": sum(
+                r.usage.cache_creation_input_tokens for r in results
+            ),
         }
         if summary["total"] > 0:
             summary["solve_rate"] = round(summary["solved"] / summary["total"], 4)

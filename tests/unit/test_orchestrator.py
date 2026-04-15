@@ -120,6 +120,52 @@ async def test_failed_status_on_clean_exit_no_flag(tmp_path, monkeypatch):
     assert r.flag is None
     assert (tmp_path / "failures" / "a.md").exists()
 
+async def test_usage_is_parsed_from_transcript_into_result(tmp_path, monkeypatch):
+    """Orchestrator must parse the Claude transcript after each run and
+    attach Usage (tokens + cost) to the Result — without this, results.json
+    can't answer 'how much did this batch cost'."""
+    import json as _json
+
+    async def worker_writing_transcript(*args, **kwargs):
+        wd = kwargs["workdir"]
+        logs = wd / "logs"
+        logs.mkdir(parents=True, exist_ok=True)
+        (logs / "claude.stdout.jsonl").write_text(
+            _json.dumps({
+                "type": "result", "subtype": "success",
+                "total_cost_usd": 0.42,
+                "usage": {"input_tokens": 10, "output_tokens": 69,
+                          "cache_read_input_tokens": 0,
+                          "cache_creation_input_tokens": 50000},
+            }) + "\n"
+        )
+        return WorkerResult(
+            name=kwargs["name"], exit_code=0,
+            stdout=f"FLAG: flag{{{kwargs['name']}}}\n", stderr="",
+            timed_out=False, duration_s=0.1,
+        )
+
+    monkeypatch.setattr(
+        "hydra.orchestrator.run_worker", worker_writing_transcript
+    )
+    writer = FakeWriter()
+    cfg = OrchestratorConfig(
+        parallel=1, timeout_s=30, model="m",
+        image="hydra-worker", api_key="sk",
+        runs_dir=tmp_path / "runs",
+        failures_dir=tmp_path / "failures",
+        prompt_volumes={},
+    )
+    orch = Orchestrator(cfg, writer=writer)
+    await orch.run([Challenge(name="a", description="x")])
+    [r] = writer.appended
+    assert r.status == "solved"
+    assert r.usage.cost_usd == 0.42
+    assert r.usage.input_tokens == 10
+    assert r.usage.output_tokens == 69
+    assert r.usage.cache_creation_input_tokens == 50000
+
+
 async def test_error_status_on_nonzero_exit(tmp_path, monkeypatch):
     monkeypatch.setattr("hydra.orchestrator.run_worker", fake_worker_errored)
     writer = FakeWriter()

@@ -2,12 +2,14 @@ import json
 from pathlib import Path
 from hydra.models import Result
 from hydra.results import ResultsWriter, load_jsonl_names
+from hydra.usage import Usage
 
-def _mk(name, status, flag=None):
+def _mk(name, status, flag=None, usage=None):
     return Result(
         name=name, status=status, flag=flag,
         duration_s=1.0, started_at="t0", finished_at="t1",
         worker_exit_code=0, work_dir=f"./runs/{name}/",
+        usage=usage or Usage(),
     )
 
 def test_append_jsonl_creates_file(tmp_path: Path):
@@ -88,6 +90,75 @@ def test_retry_success_removes_name_from_failed_list(tmp_path: Path):
     flags = json.loads((tmp_path / "f.json").read_text())
     assert flags.get("x") == "flag{retry_win}"
     assert "x" not in flags.get("__failed__", [])
+
+
+def test_summary_aggregates_usage_totals(tmp_path: Path):
+    """results.json summary must report total cost + tokens across the
+    batch so users can answer 'what did this run cost' in one glance."""
+    w = ResultsWriter(
+        jsonl_path=tmp_path / "r.jsonl",
+        flags_path=tmp_path / "f.json",
+        results_path=tmp_path / "r.json",
+    )
+    w.append(_mk("a", "solved", "flag{A}", usage=Usage(
+        input_tokens=10, output_tokens=5,
+        cache_read_input_tokens=100, cache_creation_input_tokens=200,
+        cost_usd=0.25,
+    )))
+    w.append(_mk("b", "failed", usage=Usage(
+        input_tokens=3, output_tokens=1,
+        cache_read_input_tokens=50, cache_creation_input_tokens=0,
+        cost_usd=0.10,
+    )))
+    w.finalize(run_id="run-1")
+    summary = json.loads((tmp_path / "r.json").read_text())["summary"]
+    assert summary["total_cost_usd"] == 0.35
+    assert summary["total_input_tokens"] == 13
+    assert summary["total_output_tokens"] == 6
+    assert summary["total_cache_read_tokens"] == 150
+    assert summary["total_cache_creation_tokens"] == 200
+
+
+def test_jsonl_resume_reconstructs_usage_from_dict(tmp_path: Path):
+    """Persisted jsonl stores usage as a nested dict (via dataclass asdict).
+    Resume must reconstruct it as a Usage, not leave a dict in the field."""
+    w = ResultsWriter(
+        jsonl_path=tmp_path / "r.jsonl",
+        flags_path=tmp_path / "f.json",
+        results_path=tmp_path / "r.json",
+    )
+    w.append(_mk("a", "solved", "flag{A}", usage=Usage(
+        input_tokens=7, output_tokens=3, cost_usd=0.05,
+    )))
+    # New writer over same jsonl simulates a resume.
+    w2 = ResultsWriter(
+        jsonl_path=tmp_path / "r.jsonl",
+        flags_path=tmp_path / "f.json",
+        results_path=tmp_path / "r.json",
+    )
+    [r] = w2._results
+    assert isinstance(r.usage, Usage)
+    assert r.usage.input_tokens == 7
+    assert r.usage.cost_usd == 0.05
+
+
+def test_jsonl_resume_tolerates_legacy_entries_without_usage(tmp_path: Path):
+    """Pre-usage jsonl entries must still load (back-compat for users
+    upgrading hydra mid-batch)."""
+    jsonl = tmp_path / "r.jsonl"
+    jsonl.write_text(json.dumps({
+        "name": "legacy", "status": "solved", "flag": "flag{old}",
+        "duration_s": 1.0, "started_at": "t0", "finished_at": "t1",
+        "worker_exit_code": 0, "work_dir": "./runs/legacy/",
+    }) + "\n")
+    w = ResultsWriter(
+        jsonl_path=jsonl,
+        flags_path=tmp_path / "f.json",
+        results_path=tmp_path / "r.json",
+    )
+    [r] = w._results
+    assert r.name == "legacy"
+    assert r.usage == Usage()
 
 
 def test_init_creates_parent_dirs(tmp_path: Path):

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 from pathlib import Path
 
+from hydra.heartbeat import Heartbeat, fmt_duration
 from hydra.normalize import normalize_challenges, NormalizationError, safe_name
 from hydra.orchestrator import Orchestrator, OrchestratorConfig
 from hydra.results import ResultsWriter, load_jsonl_names
@@ -157,11 +158,28 @@ def _read_input(path: str) -> list:
     raw = sys.stdin.read() if path == "-" else Path(path).read_text()
     return json.loads(raw)
 
-def _prompt_volumes(root: Path) -> dict[Path, str]:
+def _hydra_repo_root() -> Path:
+    """Return the hydra checkout root (where CLAUDE.md / .claude / exploits
+    ship as agent assets). Resolved from the installed package location so
+    it works regardless of the user's cwd — running `hydra` from anywhere
+    still finds the assets."""
+    return Path(__file__).resolve().parent.parent
+
+
+def _prompt_volumes(root: Path | None = None) -> dict[Path, str]:
+    """Bind mounts that ship the hydra agent assets into /workspace.
+
+    Sources resolve to the hydra checkout, not the user's cwd. Earlier
+    versions used `Path.cwd()` and Docker silently auto-created empty
+    host directories at every missing source — which then mounted as
+    empty dirs inside the container, so the inner agent saw an empty
+    `/workspace/CLAUDE.md` directory (EISDIR on read), no specialists,
+    and no exploit templates."""
+    base = root if root is not None else _hydra_repo_root()
     return {
-        root / "CLAUDE.md": "/workspace/CLAUDE.md",
-        root / ".claude": "/workspace/.claude",
-        root / "exploits": "/workspace/exploits",
+        base / "CLAUDE.md": "/workspace/CLAUDE.md",
+        base / ".claude": "/workspace/.claude",
+        base / "exploits": "/workspace/exploits",
     }
 
 def _compute_skips(cfg: ResolvedConfig) -> set[str]:
@@ -199,7 +217,6 @@ async def _run(cfg: ResolvedConfig) -> int:
         print(f"dry-run: {len(challenges)} challenges normalized", flush=True)
         return 0
 
-    root = Path.cwd()
     writer = ResultsWriter(
         jsonl_path=cfg.jsonl_path,
         flags_path=cfg.flags_path,
@@ -214,17 +231,41 @@ async def _run(cfg: ResolvedConfig) -> int:
         api_key=cfg.api_key,
         runs_dir=cfg.runs_dir,
         failures_dir=cfg.failures_dir,
-        prompt_volumes=_prompt_volumes(root),
+        prompt_volumes=_prompt_volumes(),
         skip_names=skip,
         attempts=cfg.attempts,
     )
-    orch = Orchestrator(orch_cfg, writer=writer)
     run_id = datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
-    try:
-        await orch.run(challenges)
-    finally:
-        writer.finalize(run_id=run_id)
+    n_pending = len(challenges) - len(skip & {c.name for c in challenges})
+    print(
+        f"\u25b6 solving {n_pending} challenge(s) "
+        f"(parallel={cfg.parallel}, timeout={cfg.timeout}s, "
+        f"attempts={cfg.attempts}, model={cfg.model})",
+        flush=True,
+    )
+    async with Heartbeat() as hb:
+        orch = Orchestrator(orch_cfg, writer=writer, heartbeat=hb)
+        try:
+            await orch.run(challenges)
+        finally:
+            writer.finalize(run_id=run_id)
+    _print_summary(writer)
     return 0 if any(r.status == "solved" for r in writer._results) else 1
+
+
+def _print_summary(writer: ResultsWriter) -> None:
+    results = writer._latest_by_name()
+    if not results:
+        return
+    solved = sum(1 for r in results if r.status == "solved")
+    total = len(results)
+    cost = sum(r.usage.cost_usd for r in results)
+    dur = sum(r.duration_s for r in results)
+    cost_str = f", ${cost:.2f}" if cost else ""
+    print(
+        f"\u25b6 solved {solved}/{total} in {fmt_duration(dur)}{cost_str}",
+        flush=True,
+    )
 
 def main(argv: list[str] | None = None) -> int:
     ns = build_parser().parse_args(argv)

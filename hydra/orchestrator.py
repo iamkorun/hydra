@@ -8,6 +8,8 @@ from hydra.workdir import build_workdir
 from hydra.flag_extractor import extract_flag
 from hydra.failures import write_failure_md, write_failures_summary
 from hydra.docker_worker import run_worker, WorkerResult
+from hydra.heartbeat import Heartbeat
+from hydra.usage import parse_usage_dir
 
 @dataclass
 class OrchestratorConfig:
@@ -26,9 +28,16 @@ class OrchestratorConfig:
     attempts: int = 1  # pass@k: N parallel attempts per challenge, first flag wins
 
 class Orchestrator:
-    def __init__(self, cfg: OrchestratorConfig, *, writer):
+    def __init__(
+        self,
+        cfg: OrchestratorConfig,
+        *,
+        writer,
+        heartbeat: Heartbeat | None = None,
+    ):
         self.cfg = cfg
         self.writer = writer
+        self._hb = heartbeat
         self._sem: asyncio.Semaphore | None = None
         self._results: list[Result] = []
 
@@ -79,17 +88,25 @@ class Orchestrator:
                 # Best-effort: don't let markdown-writing fail the Result
                 # we already recorded.
                 pass
-            _print_status(r)
+            await self._emit_status(r)
 
     async def _one(self, c: Challenge, *, started: str | None = None) -> None:
         assert self._sem is not None
         if started is None:
             started = _now_iso()
-        if self.cfg.attempts <= 1:
-            async with self._sem:
-                wd, wr = await self._attempt(c, subpath=None)
-        else:
-            wd, wr = await self._pass_at_k(c)
+        if self._hb is not None:
+            # Track at the challenge-root workdir so pass@k heartbeats
+            # aggregate all K attempts under one line.
+            self._hb.track(c.name, self.cfg.runs_dir / c.name)
+        try:
+            if self.cfg.attempts <= 1:
+                async with self._sem:
+                    wd, wr = await self._attempt(c, subpath=None)
+            else:
+                wd, wr = await self._pass_at_k(c)
+        finally:
+            if self._hb is not None:
+                self._hb.untrack(c.name)
 
         flag = extract_flag(flag_file=wd / "flag.txt", stdout=wr.stdout)
 
@@ -103,6 +120,9 @@ class Orchestrator:
         else:
             status, reason = "failed", "no flag recovered from stdout or flag.txt"
 
+        # Parse usage from the challenge root so pass@k sums all attempts,
+        # not just the winner's subdir.
+        usage = parse_usage_dir(self.cfg.runs_dir / c.name)
         r = Result(
             name=c.name, status=status, flag=flag,
             duration_s=wr.duration_s,
@@ -110,12 +130,22 @@ class Orchestrator:
             worker_exit_code=wr.exit_code,
             work_dir=str(wd),
             reason=reason,
+            usage=usage,
         )
         self._results.append(r)
         self.writer.append(r)
         if status != "solved":
             write_failure_md(c, r, work_dir=wd, failures_dir=self.cfg.failures_dir)
-        _print_status(r)
+        await self._emit_status(r)
+
+    async def _emit_status(self, r: Result) -> None:
+        """Route the per-challenge completion line through the heartbeat
+        (if active) so it lands above the live region without collision."""
+        line = _status_line(r)
+        if self._hb is not None:
+            await self._hb.print_permanent(line)
+        else:
+            print(line, flush=True)
 
     async def _attempt(
         self, c: Challenge, *, subpath: str | None
@@ -189,7 +219,8 @@ class Orchestrator:
 def _now_iso() -> str:
     return datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
 
-def _print_status(r: Result) -> None:
+def _status_line(r: Result) -> str:
     sym = "✓" if r.status == "solved" else "✗"
     detail = r.flag if r.status == "solved" else f"({r.reason or r.status})"
-    print(f"{sym} {r.name:24s} → {detail} ({r.duration_s:.1f}s)", flush=True)
+    cost = f", ${r.usage.cost_usd:.2f}" if r.usage.cost_usd else ""
+    return f"{sym} {r.name:24s} → {detail} ({r.duration_s:.1f}s{cost})"

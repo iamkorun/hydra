@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import shlex
 import time
 import uuid
 from dataclasses import dataclass
@@ -89,22 +90,44 @@ async def run_worker(
         "--network", "bridge",
         "--memory", container_memory,
         "--cpus", str(container_cpus),
+        "-e", "IS_SANDBOX=1",
         "-v", f"{workdir.resolve()}:/workspace",
     ]
     for src, dest in prompt_volumes.items():
+        # Defensively skip missing sources. Docker's bind-mount auto-creates
+        # an empty *directory* on the host when the source doesn't exist,
+        # which then mounts as an empty dir inside the container — silently
+        # corrupting `/workspace/CLAUDE.md` etc. Skipping is safer than
+        # auto-create.
+        if not src.exists():
+            continue
         cmd += ["-v", f"{src.resolve()}:{dest}:ro"]
     if credentials_dir is not None:
-        cmd += ["-v", f"{credentials_dir.resolve()}:/root/.claude:ro"]
+        # Side-mount creds read-only and copy them into a writable
+        # /root/.claude at startup. Mounting the host dir directly at
+        # /root/.claude:ro made the inner Claude Code fail every shell
+        # call — it tries to mkdir `/root/.claude/session-env/<id>` for
+        # per-session env tracking, which fails EROFS on a read-only
+        # mount and gets reported as ENOENT to the agent, who then
+        # retries the same call indefinitely.
+        cmd += ["-v", f"{credentials_dir.resolve()}:/root/.claude-host:ro"]
+        claude_json = credentials_dir.parent / ".claude.json"
+        if claude_json.is_file():
+            cmd += ["-v", f"{claude_json.resolve()}:/root/.claude.json:ro"]
     elif api_key:
         cmd += ["-e", f"ANTHROPIC_API_KEY={api_key}"]
-    cmd += [
-        "-w", "/workspace",
-        image,
+
+    inner_argv = [
         "claude", "-p", _PROMPT,
         "--model", model,
         "--dangerously-skip-permissions",
         "--output-format", "stream-json",
+        "--verbose",
     ]
+    cmd += ["-w", "/workspace", image]
+    cmd += _entrypoint_argv(
+        inner_argv, bootstrap_creds=credentials_dir is not None
+    )
 
     # Create logs dir upfront so streaming writes land somewhere real.
     logs_dir = workdir / "logs"
@@ -199,6 +222,26 @@ async def _stream_to_file(
             if len(buf) > max_buffer:
                 del buf[:-max_buffer]
     return bytes(buf)
+
+
+def _entrypoint_argv(inner_argv: list[str], *, bootstrap_creds: bool) -> list[str]:
+    """Wrap the inner `claude` invocation in `sh -c` so we can prepend a
+    cred-bootstrap step. `exec` makes claude PID 1 of the sh process so
+    `docker stop` SIGTERM reaches it directly instead of getting eaten
+    by the wrapping shell."""
+    inner = shlex.join(inner_argv)
+    if bootstrap_creds:
+        # `cp -aT src dst` preserves attrs and treats dst as the new tree
+        # root, so existing /root/.claude (if any) is replaced cleanly
+        # rather than nested as /root/.claude/.claude-host. mkdir -p
+        # tolerates the case where the image already has /root/.claude.
+        bootstrap = (
+            "mkdir -p /root/.claude && "
+            "cp -aT /root/.claude-host /root/.claude && "
+        )
+    else:
+        bootstrap = ""
+    return ["sh", "-c", f"{bootstrap}exec {inner}"]
 
 
 async def _docker_stop(engine: str, container_name: str) -> None:

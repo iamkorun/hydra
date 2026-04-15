@@ -135,14 +135,19 @@ async def test_writes_logs(tmp_path, patch_subprocess):
 async def test_command_contains_expected_args(tmp_path, patch_subprocess):
     wd = tmp_path / "runs" / "x"
     (wd / "logs").mkdir(parents=True)
+    # Existing source so the prompt-volume mount survives the missing-source
+    # skip guard added alongside the cred-bootstrap fix.
+    chal = tmp_path / "CLAUDE.md"
+    chal.write_text("# noop\n")
     await run_worker(
         name="x", workdir=wd, image="hydra-worker",
         api_key="sk", model="claude-opus-4-6", timeout_s=30,
         container_cpus=2, container_memory="8g",
-        prompt_volumes={Path("/h/CLAUDE.md"): "/workspace/CLAUDE.md"},
+        prompt_volumes={chal: "/workspace/CLAUDE.md"},
     )
     cmd = patch_subprocess["cmd"]
     joined = " ".join(cmd)
+    # Outer docker-run flags live as direct argv elements.
     assert "docker" in cmd[0] or "docker" in joined
     assert "run" in cmd
     assert "--rm" in cmd
@@ -150,14 +155,21 @@ async def test_command_contains_expected_args(tmp_path, patch_subprocess):
     assert "--cpus" in cmd and "2" in cmd
     assert "-e" in cmd  # for ANTHROPIC_API_KEY
     assert "hydra-worker" in cmd
-    assert any("claude" in c for c in cmd)
-    assert "--model" in cmd
-    assert "claude-opus-4-6" in cmd
+    # Inner `claude` invocation is wrapped in `sh -c "exec claude ..."` so
+    # the cred-bootstrap step has somewhere to attach. Find it via the
+    # wrapper string, not as bare argv elements.
+    assert "sh" in cmd
+    sh_payload = next(c for c in cmd if isinstance(c, str) and "exec claude" in c)
+    assert "--model" in sh_payload
+    assert "claude-opus-4-6" in sh_payload
+    assert "--dangerously-skip-permissions" in sh_payload
 
 
 async def test_credentials_dir_mounts_at_root_claude(tmp_path, patch_subprocess):
-    """When credentials_dir is provided, it's bind-mounted at /root/.claude:ro
-    and ANTHROPIC_API_KEY is NOT passed via -e."""
+    """When credentials_dir is provided, it's bind-mounted read-only at a
+    side path (`/root/.claude-host`) and copied into a writable
+    `/root/.claude` at startup. Earlier versions mounted directly at
+    `/root/.claude:ro`, which broke Claude Code's session-env writes."""
     wd = tmp_path / "runs" / "x"
     (wd / "logs").mkdir(parents=True)
     creds = tmp_path / "host_claude"
@@ -173,8 +185,14 @@ async def test_credentials_dir_mounts_at_root_claude(tmp_path, patch_subprocess)
     cmd = patch_subprocess["cmd"]
     joined = " ".join(str(c) for c in cmd)
 
-    # Credentials dir bind-mounted at /root/.claude:ro
-    assert f"{creds.resolve()}:/root/.claude:ro" in joined
+    # Side-mount only — never at /root/.claude:ro directly.
+    assert f"{creds.resolve()}:/root/.claude-host:ro" in joined
+    assert f"{creds.resolve()}:/root/.claude:ro" not in joined
+    # Bootstrap copies side-mount → writable /root/.claude before exec.
+    assert any("cp -aT /root/.claude-host /root/.claude" in str(c) for c in cmd)
+    # Inner command is exec'd so claude becomes the foregrounded PID,
+    # not a child of the wrapping shell (so `docker stop` reaches it).
+    assert any("exec claude" in str(c) for c in cmd)
     # No API key env var when credentials_dir is used
     assert not any(str(c).startswith("ANTHROPIC_API_KEY=") for c in cmd)
 
@@ -362,4 +380,57 @@ async def test_credentials_preferred_over_api_key(tmp_path, patch_subprocess):
     )
     cmd = patch_subprocess["cmd"]
     assert not any("ANTHROPIC_API_KEY=" in str(c) for c in cmd)
-    assert any("/root/.claude:ro" in str(c) for c in cmd)
+    assert any("/root/.claude-host:ro" in str(c) for c in cmd)
+
+
+async def test_prompt_volume_with_missing_source_is_skipped(tmp_path, patch_subprocess):
+    """A missing host-side prompt-volume source must NOT be mounted. Docker
+    silently auto-creates an empty *directory* on the host when a bind-mount
+    source doesn't exist, which then mounts as an empty dir inside the
+    container — corrupting `/workspace/CLAUDE.md` (EISDIR on read), nuking
+    the specialist agents, and stripping the exploit templates. Skipping
+    leaves the path untouched both inside and outside the container."""
+    wd = tmp_path / "runs" / "x"
+    (wd / "logs").mkdir(parents=True)
+    present = tmp_path / "CLAUDE.md"
+    present.write_text("# real prompt asset\n")
+    missing = tmp_path / "does-not-exist"
+    assert not missing.exists()
+
+    await run_worker(
+        name="x", workdir=wd, image="hydra-worker",
+        api_key="sk", model="m", timeout_s=30,
+        container_cpus=1, container_memory="1g",
+        prompt_volumes={
+            present: "/workspace/CLAUDE.md",
+            missing: "/workspace/.claude",
+        },
+    )
+    cmd = patch_subprocess["cmd"]
+    joined = " ".join(str(c) for c in cmd)
+    assert f"{present.resolve()}:/workspace/CLAUDE.md:ro" in joined
+    assert "/workspace/.claude" not in joined
+    # And docker must NOT have auto-created the missing host path.
+    assert not missing.exists()
+
+
+async def test_inner_command_quoting_preserves_special_chars(tmp_path, patch_subprocess):
+    """The inner `claude -p <prompt>` is wrapped in `sh -c`, so the prompt
+    must survive shell quoting intact — backticks especially. If the prompt
+    leaks into shell evaluation, `FLAG: <flag>` becomes a command
+    substitution that runs `<flag>` as a binary."""
+    wd = tmp_path / "runs" / "x"
+    (wd / "logs").mkdir(parents=True)
+
+    await run_worker(
+        name="x", workdir=wd, image="hydra-worker",
+        api_key="sk", model="m", timeout_s=30,
+        container_cpus=1, container_memory="1g",
+        prompt_volumes={},
+    )
+    cmd = patch_subprocess["cmd"]
+    sh_cmd = next(c for c in cmd if isinstance(c, str) and "exec claude" in c)
+    # The literal backtick'd marker is single-quoted, not exposed to sh.
+    assert "`FLAG: <flag>`" in sh_cmd
+    # And it lives inside a single-quoted region after the -p flag.
+    assert "-p '" in sh_cmd

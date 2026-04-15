@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from hydra.usage import Usage
+
 Status = Literal["solved", "failed", "timeout", "error", "solved_uncertain"]
 
 @dataclass(frozen=True)
@@ -25,3 +27,4 @@ class Result:
     worker_exit_code: int
     work_dir: str
     reason: str | None = None
+    usage: Usage = field(default_factory=Usage)

@@ -223,6 +223,32 @@ def test_compute_skips_missing_jsonl(tmp_path):
     assert _compute_skips(cfg) == set()
 
 
+def test_prompt_volumes_resolve_against_hydra_repo_not_cwd(monkeypatch, tmp_path):
+    """Prompt volumes must point at the hydra checkout (where CLAUDE.md /
+    .claude / exploits ship as agent assets), not the user's cwd. Using
+    cwd let docker auto-create empty host dirs at every missing source,
+    silently mounting an empty `/workspace/CLAUDE.md` directory inside
+    the container — the inner agent then read EISDIR, lost the system
+    prompt, and lost every specialist agent definition."""
+    from hydra.cli import _hydra_repo_root, _prompt_volumes
+
+    # Pretend the user runs hydra from somewhere with no CLAUDE.md.
+    monkeypatch.chdir(tmp_path)
+    vols = _prompt_volumes()
+    repo = _hydra_repo_root()
+
+    # All sources point at the hydra checkout, not cwd.
+    for src in vols:
+        assert src.is_relative_to(repo), (src, repo)
+        assert not src.is_relative_to(tmp_path)
+
+    # And the three canonical asset paths are present.
+    by_dest = {dest: src for src, dest in vols.items()}
+    assert by_dest["/workspace/CLAUDE.md"] == repo / "CLAUDE.md"
+    assert by_dest["/workspace/.claude"] == repo / ".claude"
+    assert by_dest["/workspace/exploits"] == repo / "exploits"
+
+
 def test_run_returns_2_on_normalization_error(tmp_path, capsys):
     (tmp_path / "chal.json").write_text(json.dumps([{"name": "x"}]))  # no desc, no files
     cfg = _mk_resolved(tmp_path)
