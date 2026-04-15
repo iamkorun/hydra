@@ -61,7 +61,10 @@ Automated scanners are powerful but noisy — running sqlmap for 10 minutes when
    - `.claude/skills/web/lfi-rce.md`
    - `.claude/skills/web/deserialization.md`
 4. Adapt exploit template to `./work/solve.py`.
-5. Iterate. ~5 failed variations per vuln class.
+5. Iterate — but **not blindly**. When an exploit doesn't fire:
+   - Run the diagnostic ladder in `.claude/skills/meta/exploit-debug.md` *before* writing v2.
+   - Do not substitute training memory for a working exploit (default creds, "I know this room's answer"). If you must, follow `.claude/skills/meta/no-prior-knowledge.md` and log to `./work/prior-knowledge.log` — otherwise the verifier will flag it and the run is wasted.
+   ~5 failed variations per vuln class, max.
 
 # Skills reference
 

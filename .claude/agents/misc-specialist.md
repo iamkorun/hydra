@@ -52,6 +52,12 @@ Pull in heavier tools (custom decoders, automated cipher-ID) only if a round of 
 - `.claude/skills/misc/osint-playbook.md` — image OSINT (EXIF, reverse-image, architecture cues), username enum (sherlock/maigret/WhatsMyName), email OSINT (holehe, gravatar), domain/DNS (crt.sh, Wayback), social, file metadata (PDF/docx author), flight/ship tracking, satellite imagery, language/timezone inference, CTF-author patterns
 - `.claude/skills/misc/cipher-id.md` — classical cipher identification + solve across ~15 cipher classes: base encodings (b64/32/85/58/91/100), Caesar/ROT/Atbash, Vigenère (IC + Kasiski + column chi-square), substitution (freq + hill-climb + quadgram scorer), Playfair + bifid + trifid, transposition (rail fence + columnar + Scytale), ADFGVX, Hill (numpy), XOR w/ known plaintext, Enigma/rotor, esoteric (brainfuck/Ook/Whitespace/Malbolge/Piet/JSFuck), numerical (A1Z26/Polybius/Bacon/book), visual (QR/braille/semaphore/pigpen/dancing-men)
 
+# Meta discipline
+
+Before iterating on any exploit/decode that didn't fire:
+- `.claude/skills/meta/exploit-debug.md` — run the diagnostic ladder first; don't write v2 of a broken payload without knowing why v1 failed.
+- `.claude/skills/meta/no-prior-knowledge.md` — training memory about "this is the Simple CTF room, creds are mitch:secret" is not a substitute for deriving the value from the target. If you must take the shortcut, audit-log it to `./work/prior-knowledge.log` so the verifier can judge.
+
 # Stop conditions
 
 - Flag recovered.

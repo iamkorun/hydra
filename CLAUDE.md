@@ -71,6 +71,8 @@ Budget at most two re-dispatches before writing a postmortem.
 - **Hand off when stuck or misclassified.** Write `./work/handoff.json` per `.claude/skills/meta/handoff-protocol.md` to escalate to a different specialist (or self with a hint). Triage reads this file and re-dispatches with context intact.
 - **Use tmux for stateful interaction.** Any challenge that needs a long-lived nc/gdb/msfconsole session should use the pattern in `.claude/skills/meta/iat-pattern.md` + `.claude/skills/pwn/tmux-session.md`. Don't re-connect per Bash call.
 - **Try shell first.** Before reaching for pwntools/sage/ghidra-headless, try a one-liner with `curl`, `nc`, `strings`, `xxd`, `base64`. Most CTF wins are a single pipe away.
+- **Debug before rewriting.** When an exploit doesn't fire, run the diagnostic ladder in `.claude/skills/meta/exploit-debug.md` before writing v2 — most exploit failures are upstream (URL encoding, wrong endpoint, WAF, already-patched target), not payload-level. Writing "slightly different" payloads without diagnosing burns context and rarely wins.
+- **Derive, don't recall.** A CTF solve must be produced by running code against the challenge. Training memory ("I know this is Simple CTF, creds are `mitch:secret`") is not evidence. If you must fall back to prior knowledge, `.claude/skills/meta/no-prior-knowledge.md` is mandatory — log the assumption to `./work/prior-knowledge.log` so the verifier can gate on it. Skipping the log = fabrication; the verifier will auto-SUSPECT any candidate whose log shows a non-derived step.
 
 ## After a solve — capture lessons
 

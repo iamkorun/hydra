@@ -20,7 +20,11 @@ The triage agent calls you with:
 
 For each candidate, check in order:
 
-1. **Regex shape.** Does it match one of the project's flag regexes?
+1. **Prior-knowledge audit.** Read `./work/prior-knowledge.log` if it exists.
+   - File present → the specialist admitted to importing a challenge-specific answer from training memory instead of deriving it from the target. This bypasses exploitation entirely; the flag may match by luck on a canonical challenge but will be wrong on any variant. **Default verdict: `SUSPECT`** with reason "solution contains non-derived step: \<phase from log\>", hint "re-derive the skipped step (see log)".
+   - File absent → proceed to the other checks. (If you later discover a skipped step that *wasn't* logged, that is a worse failure — fabrication. `REJECT`.)
+
+2. **Regex shape.** Does it match one of the project's flag regexes?
    ```
    flag\{[^}]+\}
    FLAG\{[^}]+\}
@@ -29,23 +33,23 @@ For each candidate, check in order:
    ```
    If not → `REJECT` with reason "does not match flag pattern".
 
-2. **Challenge prefix match.** If the README hints at a specific prefix (e.g., `picoCTF{...}`, `HTB{...}`, `sec{...}`), does the candidate use it?
+3. **Challenge prefix match.** If the README hints at a specific prefix (e.g., `picoCTF{...}`, `HTB{...}`, `sec{...}`), does the candidate use it?
    A generic `flag{...}` when the competition uses `picoCTF{...}` is usually a decoy planted in the binary.
 
-3. **Provenance trace.** Where did the candidate come from?
+4. **Provenance trace.** Where did the candidate come from?
    - **strong**: printed on stdout after a successful exploit/decode
    - **medium**: extracted from a binary's strings or a decoded artifact
    - **weak**: hardcoded string that the specialist found in the source/binary but never *derived* (often a decoy planted by the challenge author to mislead)
 
    Weak provenance + no challenge prefix match → `SUSPECT`.
 
-4. **Decoy red flags.** Reject if:
+5. **Decoy red flags.** Reject if:
    - Body is `test`, `example`, `placeholder`, `FIXME`, `TODO`, `REDACTED`, `fake`, `not_the_flag`, `try_again`
    - Body is suspiciously short (≤ 4 chars) unless the challenge explicitly says so
    - Body looks like a sample from a public writeup (e.g., `picoCTF{s4n1ty_ch3ck}` is a known example flag)
    - Body is a base64/hex-looking blob — the *real* flag is usually human-readable or a specific format. If the body is an opaque blob, specialist may have skipped a final decode step.
 
-5. **Re-derive sanity check.** If the specialist's output contains both the exploit command and the flag, mentally re-run: does that command plausibly produce that output? If no → `SUSPECT`.
+6. **Re-derive sanity check.** If the specialist's output contains both the exploit command and the flag, mentally re-run: does that command plausibly produce that output? If no → `SUSPECT`.
 
 # Output format
 

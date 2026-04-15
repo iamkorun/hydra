@@ -149,10 +149,31 @@ ls   runs/<name>/work/                      # solver scratch files
 Logs stream to disk as the agent runs, so
 `tail -f runs/<name>/logs/claude.stdout.jsonl` works live during a batch.
 
+## Exploit discipline
+
+Hydra enforces "derive, don't recall" at the prompt layer — a CTF solve must be
+produced by running code against the target, not imported from training memory:
+
+- **`.claude/skills/meta/exploit-debug.md`** — when a payload doesn't fire, the
+  specialist runs a 6-step diagnostic ladder (reachable → payload arrives →
+  endpoint live → response diff → oracle sanity → public-PoC diff) *before*
+  iterating. Cuts the "write v1 → no response → write v2 that's basically v1"
+  context burn we saw on time-based SQLi challenges.
+- **`.claude/skills/meta/no-prior-knowledge.md`** — if a specialist falls back
+  to training memory ("I know this room's creds are `mitch:secret`") it must
+  audit-log to `./work/prior-knowledge.log` with derivation-attempt + risk.
+  The `verifier-specialist` auto-`SUSPECT`s any candidate whose run emitted
+  that log, so the triage agent re-dispatches with "derive the skipped step".
+  Skipping the log = fabrication; verifier catches it on provenance.
+
+Why it matters: without this, a specialist can score on a canonical challenge by
+recalling the answer instead of exploiting it, and collapse on any variant. The
+log turns silent shortcuts into an auditable signal.
+
 ## Development
 
 ```bash
-.venv/bin/pytest                # 99 tests
+.venv/bin/pytest                # 131 tests
 .venv/bin/python -m ruff check  # lint (E + F + B + UP rulesets)
 ```
 
