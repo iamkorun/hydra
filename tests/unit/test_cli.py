@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 import pytest
-from hydra.cli import ResolvedConfig, build_parser, resolve_config, _run
+from hydra.cli import ResolvedConfig, build_parser, resolve_config, _run, _compute_skips
 
 
 def _patch_default_creds(monkeypatch, tmp_path, *, exists: bool, logged_in: bool):
@@ -197,6 +197,30 @@ def test_run_dry_run_with_matching_only_returns_0(tmp_path):
     ]))
     cfg = _mk_resolved(tmp_path, only_filter={"alpha"})
     assert asyncio.run(_run(cfg)) == 0
+
+
+def test_compute_skips_resume_semantics(tmp_path):
+    """By default, resume skips both solved AND failed so we don't re-burn
+    budget on hopeless ones. With --retry-failed, the skip set drops the
+    failed entries so they get another attempt."""
+    jsonl = tmp_path / "r.jsonl"
+    jsonl.write_text(
+        '{"name":"a","status":"solved"}\n'
+        '{"name":"b","status":"failed"}\n'
+        '{"name":"c","status":"timeout"}\n'
+        '{"name":"d","status":"error"}\n'
+    )
+    cfg_no_retry = _mk_resolved(tmp_path, jsonl_path=jsonl, retry_failed=False)
+    assert _compute_skips(cfg_no_retry) == {"a", "b", "c", "d"}
+
+    cfg_retry = _mk_resolved(tmp_path, jsonl_path=jsonl, retry_failed=True)
+    assert _compute_skips(cfg_retry) == {"a"}
+
+
+def test_compute_skips_missing_jsonl(tmp_path):
+    """First run: no jsonl exists → nothing to skip."""
+    cfg = _mk_resolved(tmp_path, jsonl_path=tmp_path / "nope.jsonl")
+    assert _compute_skips(cfg) == set()
 
 
 def test_run_returns_2_on_normalization_error(tmp_path, capsys):
