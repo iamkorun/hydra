@@ -1,6 +1,7 @@
 import asyncio
 import os
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -89,7 +90,7 @@ async def run_worker(
         "--output-format", "stream-json",
     ]
 
-    start = asyncio.get_event_loop().time()
+    start = time.monotonic()
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -121,7 +122,7 @@ async def run_worker(
             pass
         raise
 
-    duration = asyncio.get_event_loop().time() - start
+    duration = time.monotonic() - start
     stdout = stdout_bytes.decode(errors="replace")
     stderr = stderr_bytes.decode(errors="replace")
 
