@@ -4,7 +4,7 @@ from typing import Literal
 
 Status = Literal["solved", "failed", "timeout", "error", "solved_uncertain"]
 
-@dataclass
+@dataclass(frozen=True)
 class Challenge:
     name: str
     description: str
@@ -14,7 +14,7 @@ class Challenge:
     category: str | None = None
     points: int | None = None
 
-@dataclass
+@dataclass(frozen=True)
 class Result:
     name: str
     status: Status
