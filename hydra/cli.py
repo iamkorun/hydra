@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, UTC
 from pathlib import Path
@@ -259,27 +260,35 @@ async def _run(cfg: ResolvedConfig) -> int:
         f"attempts={cfg.attempts}, model={cfg.model})",
         flush=True,
     )
+    t0 = time.monotonic()
     async with Heartbeat() as hb:
         orch = Orchestrator(orch_cfg, writer=writer, heartbeat=hb)
         try:
             await orch.run(challenges)
         finally:
             writer.finalize(run_id=run_id)
-    _print_summary(writer)
+    wall_s = time.monotonic() - t0
+    _print_summary(writer, wall_s=wall_s)
     return 0 if any(r.status == "solved" for r in writer._results) else 1
 
 
-def _print_summary(writer: ResultsWriter) -> None:
+def _print_summary(writer: ResultsWriter, *, wall_s: float) -> None:
     results = writer._latest_by_name()
     if not results:
         return
     solved = sum(1 for r in results if r.status == "solved")
     total = len(results)
     cost = sum(r.usage.cost_usd for r in results)
-    dur = sum(r.duration_s for r in results)
+    # `duration_s` is each worker's wall-clock; summed it's the batch's
+    # time-on-task across parallel slots (useful for $/compute sizing).
+    # `wall_s` is the orchestrator's real elapsed clock — what the user
+    # actually waited. Report both so a fast parallel batch doesn't look
+    # as slow as its summed runtime.
+    agg = sum(r.duration_s for r in results)
     cost_str = f", ${cost:.2f}" if cost else ""
     print(
-        f"\u25b6 solved {solved}/{total} in {fmt_duration(dur)}{cost_str}",
+        f"\u25b6 solved {solved}/{total} in {fmt_duration(wall_s)} wall "
+        f"({fmt_duration(agg)} agg){cost_str}",
         flush=True,
     )
 
