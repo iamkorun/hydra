@@ -7,6 +7,7 @@ sympy==1.13.*
 requests==2.32.*
 beautifulsoup4==4.12.*
 pyjwt==2.10.*
+paramiko==3.5.*
 r2pipe==1.9.*
 ROPgadget==7.6
 volatility3==2.8.*

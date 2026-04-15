@@ -15,6 +15,9 @@ python3-venv
 tmux
 socat
 netcat-openbsd
+nmap
+openssh-client
+sshpass
 ruby
 ruby-dev
 patchelf
