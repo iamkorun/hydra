@@ -17,6 +17,11 @@ class ResultsWriter:
         self.flags_path = flags_path
         self.results_path = results_path
         self._results: list[Result] = []
+        # Ensure output dirs exist up-front so the first append() doesn't
+        # crash if the user pointed --jsonl / --flags-out / --results at a
+        # path whose parent is not yet created.
+        for p in (jsonl_path, flags_path, results_path):
+            p.parent.mkdir(parents=True, exist_ok=True)
         # Pre-load existing jsonl so finalize sees everything (supports resume).
         if jsonl_path.exists():
             for line in jsonl_path.read_text().splitlines():
@@ -25,7 +30,10 @@ class ResultsWriter:
                 try:
                     d = json.loads(line)
                     self._results.append(Result(**d))
-                except Exception:
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    # Tolerate malformed or schema-drifted lines during
+                    # resume. We still want to run new challenges even if
+                    # an old entry can't be reconstructed.
                     continue
 
     def append(self, r: Result) -> None:

@@ -90,6 +90,44 @@ def test_retry_success_removes_name_from_failed_list(tmp_path: Path):
     assert "x" not in flags.get("__failed__", [])
 
 
+def test_init_creates_parent_dirs(tmp_path: Path):
+    """A user may point --jsonl / --flags-out / --results at a nested path
+    whose parent dir doesn't exist yet. The writer must create those dirs
+    so the first append() doesn't crash with FileNotFoundError."""
+    nested = tmp_path / "a" / "b" / "c"
+    assert not nested.exists()
+    w = ResultsWriter(
+        jsonl_path=nested / "r.jsonl",
+        flags_path=nested / "f.json",
+        results_path=nested / "r.json",
+    )
+    w.append(_mk("x", "solved", "flag{x}"))
+    assert (nested / "r.jsonl").exists()
+    assert (nested / "f.json").exists()
+
+
+def test_init_tolerates_malformed_jsonl_lines(tmp_path: Path):
+    """Schema drift or partial writes shouldn't block resume. Bad lines
+    are skipped; good ones are loaded."""
+    jsonl = tmp_path / "r.jsonl"
+    jsonl.write_text(
+        "not json at all\n"
+        '{"name": "x", "status": "solved", "flag": "flag{ok}", "duration_s": 1.0, '
+        '"started_at": "s", "finished_at": "f", "worker_exit_code": 0, '
+        '"work_dir": "."}\n'
+        '{"name": "y", "extra_field_from_future_version": true}\n'
+    )
+    w = ResultsWriter(
+        jsonl_path=jsonl,
+        flags_path=tmp_path / "f.json",
+        results_path=tmp_path / "r.json",
+    )
+    names = {r.name for r in w._results}
+    assert "x" in names
+    # The malformed and schema-drifted lines are silently skipped.
+    assert "y" not in names
+
+
 def test_finalize_coalesces_duplicate_names(tmp_path: Path):
     """Summary counts must reflect the latest per-name outcome, not the
     raw jsonl sequence. A challenge that went failed → solved must be
