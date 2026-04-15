@@ -91,3 +91,22 @@ def test_safe_name_for_workdir():
     assert safe_name("a/b") == "a-b"
     assert safe_name("../evil") == "-evil"
     assert safe_name("รหัสลับ") == "รหัสลับ"  # unicode OK
+
+
+def test_normalize_applies_safe_name_to_prevent_path_traversal():
+    """Challenge names become directory names (runs/<name>/), so raw input
+    must be sanitized at normalization time. Without this, a malicious or
+    careless input like '../evil' would escape the runs directory."""
+    [c] = normalize_challenges([{"name": "../evil", "description": "x"}])
+    assert c.name == "-evil"
+    assert "/" not in c.name
+    assert ".." not in c.name
+
+    [c] = normalize_challenges([{"name": "a/b/c", "description": "x"}])
+    assert c.name == "a-b-c"
+
+    [c] = normalize_challenges([{"name": "with spaces", "description": "x"}])
+    assert c.name == "with-spaces"
+
+    [c] = normalize_challenges([{"name": "back\\slash", "description": "x"}])
+    assert c.name == "back-slash"

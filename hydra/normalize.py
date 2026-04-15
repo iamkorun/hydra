@@ -53,7 +53,10 @@ def _normalize_one(raw: dict[str, Any], idx: int) -> Challenge:
     points = _first(raw, _POINTS_KEYS)
 
     return Challenge(
-        name=str(name),
+        # safe_name strips filesystem-hostile chars so the challenge name
+        # can be used as a directory (runs/<name>/, failures/<name>.md)
+        # without risking path traversal from untrusted input.
+        name=safe_name(str(name)),
         description=str(desc),
         files=files,
         remote=_first(raw, _REMOTE_KEYS),
