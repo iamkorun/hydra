@@ -37,6 +37,42 @@ def test_includes_postmortem(tmp_path: Path):
     md = write_failure_md(c, r, work_dir=work_dir, failures_dir=tmp_path / "failures").read_text()
     assert "tried Wiener" in md
 
+def test_transcript_fence_escapes_embedded_backticks(tmp_path: Path):
+    """A tail containing triple-backticks (e.g., agent stdout showing a
+    code block in a tool result) must not prematurely close the
+    markdown fence. The outer fence length must exceed any backtick run
+    in the embedded content so the rendered .md stays as one code block."""
+    c = Challenge(name="x", description="d")
+    r = _mk_result("x", "failed", "no flag")
+    work_dir = tmp_path / "runs" / "x"
+    (work_dir / "logs").mkdir(parents=True)
+    (work_dir / "logs" / "claude.stdout.jsonl").write_text(
+        "start\n```python\ndef f(): pass\n```\nend\n"
+    )
+    md = write_failure_md(
+        c, r, work_dir=work_dir, failures_dir=tmp_path / "failures",
+    ).read_text()
+    # Find the fenced tail block. The opening fence must be strictly
+    # longer than the max embedded backtick run (3 → fence of 4).
+    assert "````" in md
+    # The content must appear between two matching 4+ backtick fences.
+    # Naive check: there should be exactly 2 fences of length 4 in the
+    # tail section, and the triple-backticks inside stay intact.
+    assert "```python" in md
+    assert md.count("````") >= 2
+
+
+def test_safe_fence_scales_with_longest_run():
+    from hydra.failures import _safe_fence
+    assert _safe_fence("no backticks at all") == "```"
+    assert _safe_fence("single ` inline") == "```"
+    assert _safe_fence("double `` inline") == "```"
+    assert _safe_fence("triple ``` is common") == "````"
+    assert _safe_fence("a ```` b") == "`````"
+    # Empty content still gets the minimum 3-backtick fence.
+    assert _safe_fence("") == "```"
+
+
 def test_summary_table(tmp_path: Path):
     results = [
         _mk_result("a", "timeout", "60m"),

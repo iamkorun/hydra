@@ -1,5 +1,18 @@
+import re
 from pathlib import Path
 from hydra.models import Challenge, Result
+
+_BACKTICK_RUN = re.compile(r"`+")
+
+
+def _safe_fence(content: str) -> str:
+    """Pick a backtick fence strictly longer than the longest backtick run
+    in content, so embedding untrusted output cannot close the fence early.
+    CommonMark requires fences of at least 3 backticks."""
+    longest = 0
+    for m in _BACKTICK_RUN.finditer(content):
+        longest = max(longest, len(m.group(0)))
+    return "`" * max(3, longest + 1)
 
 def write_failure_md(
     c: Challenge, r: Result, *, work_dir: Path, failures_dir: Path
@@ -10,6 +23,8 @@ def write_failure_md(
     tail = _tail(work_dir / "logs" / "claude.stdout.jsonl", n=50)
     postmortem = _read_or(work_dir / "work" / "postmortem.md", default=None)
 
+    tail_body = tail or "(empty)"
+    tail_fence = _safe_fence(tail_body)
     parts = [
         f"# {c.name} — FAILED ({r.status})",
         "",
@@ -24,9 +39,9 @@ def write_failure_md(
         "",
         "## Last 50 lines of transcript",
         "",
-        "```",
-        tail or "(empty)",
-        "```",
+        tail_fence,
+        tail_body,
+        tail_fence,
         "",
     ]
     if postmortem:
