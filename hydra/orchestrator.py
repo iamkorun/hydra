@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from pathlib import Path
@@ -34,19 +35,56 @@ class Orchestrator:
     async def run(self, challenges: list[Challenge]) -> None:
         self._sem = asyncio.Semaphore(self.cfg.parallel)
         work = [
-            self._one(c) for c in challenges if c.name not in self.cfg.skip_names
+            self._safe_one(c) for c in challenges if c.name not in self.cfg.skip_names
         ]
         try:
-            await asyncio.gather(*work)
+            # return_exceptions=True + _safe_one's own try/except is belt-
+            # and-suspenders: a single flaky docker spawn or workdir perm
+            # error must never cancel the rest of the batch.
+            await asyncio.gather(*work, return_exceptions=True)
         finally:
             if self._results:
                 write_failures_summary(
                     self._results, failures_dir=self.cfg.failures_dir
                 )
 
-    async def _one(self, c: Challenge) -> None:
-        assert self._sem is not None
+    async def _safe_one(self, c: Challenge) -> None:
+        """Run _one(c) and convert any unexpected exception into an error
+        Result. CancelledError is re-raised so legitimate cancellation
+        still propagates."""
         started = _now_iso()
+        try:
+            await self._one(c, started=started)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            tb = traceback.format_exc()
+            wd = self.cfg.runs_dir / c.name
+            r = Result(
+                name=c.name,
+                status="error",
+                flag=None,
+                duration_s=0.0,
+                started_at=started,
+                finished_at=_now_iso(),
+                worker_exit_code=-1,
+                work_dir=str(wd),
+                reason=f"orchestrator exception: {type(e).__name__}: {e}\n{tb[-800:]}",
+            )
+            self._results.append(r)
+            self.writer.append(r)
+            try:
+                write_failure_md(c, r, work_dir=wd, failures_dir=self.cfg.failures_dir)
+            except Exception:
+                # Best-effort: don't let markdown-writing fail the Result
+                # we already recorded.
+                pass
+            _print_status(r)
+
+    async def _one(self, c: Challenge, *, started: str | None = None) -> None:
+        assert self._sem is not None
+        if started is None:
+            started = _now_iso()
         if self.cfg.attempts <= 1:
             async with self._sem:
                 wd, wr = await self._attempt(c, subpath=None)

@@ -253,6 +253,48 @@ async def test_passk_all_fail(tmp_path, monkeypatch):
     assert r.flag is None
     assert (tmp_path / "failures" / "a.md").exists()
 
+async def test_one_exception_does_not_cancel_siblings(tmp_path, monkeypatch):
+    """If one challenge's worker raises an unhandled exception (e.g., docker
+    daemon down), every sibling must still complete. Before the fix,
+    asyncio.gather's fail-fast default cancelled peers on the first
+    exception, losing the entire batch's worth of solves."""
+    async def worker(*args, **kwargs):
+        if kwargs["name"] == "boom":
+            raise RuntimeError("simulated docker spawn failure")
+        return WorkerResult(
+            name=kwargs["name"], exit_code=0,
+            stdout=f"FLAG: flag{{{kwargs['name']}}}\n",
+            stderr="", timed_out=False, duration_s=0.1,
+        )
+
+    monkeypatch.setattr("hydra.orchestrator.run_worker", worker)
+    writer = FakeWriter()
+    cfg = OrchestratorConfig(
+        parallel=3, timeout_s=30, model="m",
+        image="hydra-worker", api_key="sk",
+        runs_dir=tmp_path / "runs",
+        failures_dir=tmp_path / "failures",
+        prompt_volumes={},
+    )
+    challenges = [
+        Challenge(name="a", description="x"),
+        Challenge(name="boom", description="x"),
+        Challenge(name="b", description="x"),
+    ]
+    orch = Orchestrator(cfg, writer=writer)
+    await orch.run(challenges)
+    by_name = {r.name: r for r in writer.appended}
+    assert set(by_name) == {"a", "boom", "b"}, by_name
+    # Siblings solved normally.
+    assert by_name["a"].status == "solved" and by_name["a"].flag == "flag{a}"
+    assert by_name["b"].status == "solved" and by_name["b"].flag == "flag{b}"
+    # Faulting one recorded as error with the exception info.
+    assert by_name["boom"].status == "error"
+    assert "simulated docker spawn failure" in (by_name["boom"].reason or "")
+    # Failure markdown written for the error case.
+    assert (tmp_path / "failures" / "boom.md").exists()
+
+
 async def test_skip_already_solved(tmp_path, monkeypatch):
     monkeypatch.setattr("hydra.orchestrator.run_worker", fake_worker_solved)
     writer = FakeWriter()
