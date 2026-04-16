@@ -62,8 +62,13 @@ RUN apt-get update \
  && curl -fsSL -o /tmp/ghidra.zip \
     "https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_${GHIDRA_VERSION}_build/ghidra_${GHIDRA_VERSION}_PUBLIC_${GHIDRA_DATE}.zip" \
  && unzip -q /tmp/ghidra.zip -d /opt \
- && rm /tmp/ghidra.zip \
- && ln -s "/opt/ghidra_${GHIDRA_VERSION}_PUBLIC/support/analyzeHeadless" /usr/local/bin/analyzeHeadless
+ && rm /tmp/ghidra.zip
+
+# analyzeHeadless wrapper: caps the number of Ghidra calls per
+# container to prevent the agent from burning token budget on
+# re-decompilation loops (see phase-4 Router-Web postmortem).
+COPY docker/ghidra-wrapper.sh /usr/local/bin/analyzeHeadless
+RUN chmod +x /usr/local/bin/analyzeHeadless
 
 # Jadx (Java decompiler) — not in Ubuntu noble apt, download from github release.
 # Shares the JDK from the Ghidra layer above.
