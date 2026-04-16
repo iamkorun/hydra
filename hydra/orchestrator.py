@@ -10,6 +10,7 @@ from hydra.failures import write_failure_md, write_failures_summary
 from hydra.docker_worker import run_worker, WorkerResult
 from hydra.heartbeat import Heartbeat
 from hydra.usage import parse_usage_dir
+from hydra.remote_contact import was_remote_contacted
 
 @dataclass
 class OrchestratorConfig:
@@ -113,7 +114,15 @@ class Orchestrator:
         if wr.timed_out:
             status, reason = "timeout", f"wall-clock timeout after {self.cfg.timeout_s}s"
         elif flag:
-            status, reason = "solved", None
+            log_file = wd / "logs" / "claude.stdout.jsonl"
+            if c.remote and not was_remote_contacted(log_file, c.remote):
+                status = "solved_uncertain"
+                reason = (
+                    f"flag extracted but no evidence agent contacted remote "
+                    f"{c.remote} — likely false positive from README/binary string"
+                )
+            else:
+                status, reason = "solved", None
         elif wr.exit_code != 0:
             status = "error"
             reason = (wr.stderr[-1024:] if wr.stderr else f"worker exited {wr.exit_code}")
