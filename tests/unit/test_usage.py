@@ -52,7 +52,7 @@ def test_parse_usage_prefers_model_usage_when_present(tmp_path: Path):
                    "cache_read_input_tokens": 248757,
                    "cache_creation_input_tokens": 7657},
          "modelUsage": {
-             "claude-opus-4-6": {
+             "claude-opus-4-7": {
                  "inputTokens": 42,
                  "outputTokens": 9921,
                  "cacheReadInputTokens": 1130064,
@@ -79,7 +79,7 @@ def test_parse_usage_sums_across_models(tmp_path: Path):
                    "cache_read_input_tokens": 0,
                    "cache_creation_input_tokens": 0},
          "modelUsage": {
-             "claude-opus-4-6": {
+             "claude-opus-4-7": {
                  "inputTokens": 100, "outputTokens": 200,
                  "cacheReadInputTokens": 1000,
                  "cacheCreationInputTokens": 50,

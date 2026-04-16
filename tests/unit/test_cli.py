@@ -22,7 +22,7 @@ def test_parser_defaults():
     assert ns.challenges == "chal.json"
     assert ns.parallel is None
     assert ns.timeout == 3600
-    assert ns.model == "claude-opus-4-6"
+    assert ns.model == "claude-opus-4-7"
     assert ns.retry_failed is False
     assert ns.only is None
     assert ns.credentials_dir is None

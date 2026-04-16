@@ -13,7 +13,7 @@ from hydra.normalize import normalize_challenges, NormalizationError, safe_name
 from hydra.orchestrator import Orchestrator, OrchestratorConfig
 from hydra.results import ResultsWriter, load_jsonl_names
 
-DEFAULT_MODEL = "claude-opus-4-6"
+DEFAULT_MODEL = "claude-opus-4-7"
 DEFAULT_CREDENTIALS_DIR = Path.home() / ".claude"
 
 @dataclass

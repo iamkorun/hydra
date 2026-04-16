@@ -82,7 +82,7 @@ async def test_basic_run(tmp_path, patch_subprocess):
         workdir=wd,
         image="hydra-worker",
         api_key="sk-test",
-        model="claude-opus-4-6",
+        model="claude-opus-4-7",
         timeout_s=30,
         container_cpus=2,
         container_memory="4g",
@@ -141,7 +141,7 @@ async def test_command_contains_expected_args(tmp_path, patch_subprocess):
     chal.write_text("# noop\n")
     await run_worker(
         name="x", workdir=wd, image="hydra-worker",
-        api_key="sk", model="claude-opus-4-6", timeout_s=30,
+        api_key="sk", model="claude-opus-4-7", timeout_s=30,
         container_cpus=2, container_memory="8g",
         prompt_volumes={chal: "/workspace/CLAUDE.md"},
     )
@@ -161,7 +161,7 @@ async def test_command_contains_expected_args(tmp_path, patch_subprocess):
     assert "sh" in cmd
     sh_payload = next(c for c in cmd if isinstance(c, str) and "exec claude" in c)
     assert "--model" in sh_payload
-    assert "claude-opus-4-6" in sh_payload
+    assert "claude-opus-4-7" in sh_payload
     assert "--dangerously-skip-permissions" in sh_payload
 
 
