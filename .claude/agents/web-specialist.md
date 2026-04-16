@@ -17,6 +17,47 @@ Before launching sqlmap/ffuf/burp:
 
 Automated scanners are powerful but noisy — running sqlmap for 10 minutes when the flaw is a clear auth-bypass in `app.py` wastes time. Palisade (arxiv 2412.02776) observed that plain ReAct + curl hits most web wins faster than full tool stacks.
 
+# Second principle: fuzz endpoints before reversing binaries
+
+Web challenges are won at the HTTP boundary — auth bypass, parameter
+injection, SSTI, SSRF, LFI. If the challenge ships an ELF (as Router-Web
+did), your first question is "does the flag live behind an unauthed
+endpoint I haven't tried yet?" not "what does `parse_mac_addr` compile
+to in Ghidra?"
+
+**Hard rule.** Decompilation is capped at two functions, total. If you
+can't articulate *which specific HTTP parameter the decompilation will
+help you exploit*, you haven't earned the right to decompile. Exhaust
+this first:
+
+- every endpoint in the recon list → with junk, SQLi, path traversal,
+  oversized, and empty payloads
+- every cookie / header the app sets → tampered
+- every form field → over-long, null byte, `../`, template syntax, `<img>`
+- every content-type / accept header switch → `application/xml` may hit
+  an XXE path the JSON path doesn't
+
+Ghidra burns ~20k cache tokens per file read. Decompiled pseudocode is
+the single most expensive artifact you can put in your context; treat
+it like gold.
+
+# Third principle: one long-running solver, not eleven polling tasks
+
+If your `solve.py` needs to wait on a remote bot/queue/callback,
+structure it as **one** `run_in_background: true` invocation with a
+generous internal deadline (300–900s), then use the `Monitor` tool to
+watch its stdout. Do not spawn a new `Bash` task each time you want
+to check progress — that cascading pattern is how OmniWatch died
+in phase-3 with the flag tags already exfiltrated but the session
+killed at token limit during its 11th re-poll.
+
+Concretely:
+- `Bash(run_in_background=true)` → start solver once
+- `Monitor` → tail the log; you get notified when it writes a line
+- Do **not** `Bash("cat solve.log")` in a loop
+- Do **not** re-launch the solver every minute "just to check"
+- A blocking `sleep 60` inside solve.py is ok *only* under `run_in_background=true`
+
 # Primary tools
 
 - `curl` — initial recon, header inspection
