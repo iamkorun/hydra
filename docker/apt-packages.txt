@@ -26,3 +26,5 @@ ripgrep
 fd-find
 ugrep
 pv
+sigrok-cli
+libsigrokdecode4
