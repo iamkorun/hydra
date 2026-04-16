@@ -115,7 +115,13 @@ class Orchestrator:
             status, reason = "timeout", f"wall-clock timeout after {self.cfg.timeout_s}s"
         elif flag:
             log_file = wd / "logs" / "claude.stdout.jsonl"
-            if c.remote and not was_remote_contacted(log_file, c.remote):
+            if wr.exit_code == 137:
+                status = "solved_uncertain"
+                reason = (
+                    "worker exited 137 (SIGKILL / OOM) — flag may be stale, "
+                    "verify manually before submitting"
+                )
+            elif c.remote and not was_remote_contacted(log_file, c.remote):
                 status = "solved_uncertain"
                 reason = (
                     f"flag extracted but no evidence agent contacted remote "

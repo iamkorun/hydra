@@ -341,6 +341,60 @@ async def test_one_exception_does_not_cancel_siblings(tmp_path, monkeypatch):
     assert (tmp_path / "failures" / "boom.md").exists()
 
 
+def test_exit_137_with_flag_is_solved_uncertain(tmp_path, monkeypatch):
+    """A SIGKILL (OOM) exit must demote an otherwise-solved run.
+
+    Build a minimal orchestrator, stub `_attempt` to return a WorkerResult
+    with exit_code=137 and a flag in stdout, then run `_safe_one` and
+    assert the recorded Result has status="solved_uncertain".
+    """
+    from hydra.orchestrator import Orchestrator, OrchestratorConfig
+    from hydra.docker_worker import WorkerResult
+    from hydra.models import Challenge
+    from hydra.results import ResultsWriter
+
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    writer = ResultsWriter(
+        jsonl_path=tmp_path / "results.jsonl",
+        flags_path=tmp_path / "flags.json",
+        results_path=tmp_path / "results.json",
+    )
+    cfg = OrchestratorConfig(
+        parallel=1,
+        timeout_s=600.0,
+        model="claude-opus-4-6",
+        image="hydra-worker",
+        runs_dir=runs,
+        failures_dir=tmp_path / "failures",
+        prompt_volumes={},
+    )
+    orch = Orchestrator(cfg, writer=writer)
+    import asyncio
+    orch._sem = asyncio.Semaphore(1)
+
+    wd = runs / "Foo"
+    (wd / "logs").mkdir(parents=True, exist_ok=True)
+    (wd / "flag.txt").write_text("HTB{plausible_but_from_an_oom_run}\n")
+
+    stub_wr = WorkerResult(
+        name="Foo", stdout="", stderr="", exit_code=137, timed_out=False,
+        duration_s=10.0,
+    )
+
+    async def _fake_attempt(self, c, subpath):
+        return wd, stub_wr
+    monkeypatch.setattr(Orchestrator, "_attempt", _fake_attempt)
+
+    c = Challenge(name="Foo", description="x", remote="example.com:1234")
+    asyncio.run(orch._safe_one(c))
+
+    assert len(orch._results) == 1
+    r = orch._results[0]
+    assert r.status == "solved_uncertain", f"expected solved_uncertain, got {r.status}"
+    assert "OOM" in (r.reason or "") or "137" in (r.reason or "")
+
+
 async def test_skip_already_solved(tmp_path, monkeypatch):
     monkeypatch.setattr("hydra.orchestrator.run_worker", fake_worker_solved)
     writer = FakeWriter()
