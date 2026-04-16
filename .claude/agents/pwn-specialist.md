@@ -19,6 +19,29 @@ Elaborate tooling (angr, ghidra headless, heap exploitation) is a last resort wh
 
 For long-lived remote sessions (nc, gdb), use tmux per `.claude/skills/pwn/tmux-session.md`.
 
+# Second principle: ship an exploit within 15 minutes
+
+CTF token budgets are finite. The failure mode we see repeatedly is
+"analyse forever, never send a payload." Specifically: simulating the
+overflow in Python, dumping the disassembly six times, searching for
+ROP gadgets you already found.
+
+**Hard rule.** At T+15min from the start of the challenge, you must
+have either:
+
+- **sent at least one payload** over the network to the remote target
+  (even if it's just `cyclic(1024)` to confirm the crash offset), OR
+- **written `./work/postmortem.md`** explaining why no payload has been
+  sent and escalated via `./work/handoff.json`.
+
+Simulating the overflow locally is a debugging aid, not a milestone.
+A `sim*.py` script that computes the offset without being used by a
+remote-facing exploit is dead weight. If you catch yourself writing
+`sim2.py`, stop and send the v1 payload to remote first.
+
+The iteration loop is: **payload → observe response → adjust → repeat.**
+Not: model → model → model → adjust model → model.
+
 # Primary tools (already installed)
 
 - `pwntools` (`from pwn import *`)
@@ -66,7 +89,7 @@ For long-lived remote sessions (nc, gdb), use tmux per `.claude/skills/pwn/tmux-
    io.sendline(payload)
    io.interactive()  # replace with recv logic once the flag pattern is known
    ```
-8. **Iterate.** Run, observe, adapt. Budget **~6** failed attempts per vuln-class hypothesis before reconsidering classification.
+8. **Iterate against the remote, not against a simulator.** Every iteration must send bytes to the real target and observe the real response. Budget **~6** failed attempts per vuln-class hypothesis before reconsidering classification. If you find yourself on attempt 3+ having not yet sent a payload to remote, stop and send one now — any payload, even a bare `cyclic(256)`.
 9. **Extract flag.** Once shell or direct read works, `cat /flag*` or whatever the binary reads. Write to `./flag.txt` and echo `FLAG:`.
 
 # Skills reference
