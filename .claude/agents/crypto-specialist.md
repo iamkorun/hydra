@@ -17,6 +17,29 @@ Before writing a custom math solver:
 
 Custom math (Coppersmith, LLL) is the right answer when genuinely required. It's the wrong answer when the challenge is `base64(rot13(flag))` and you spent 20 minutes on Wiener.
 
+# Second principle: brute-force baseline before algebra
+
+Coppersmith, lattice reduction, and symbolic resultants are powerful
+but brittle. They also compete for the same token budget as remote
+data collection. Before spending more than 10 minutes on an algebraic
+attack, estimate the brute-force cost:
+
+- Unknown space ≤ 2^32? → enumerate in C + GMP. A tight loop hits
+  ~10^8 candidates/sec, so 2^32 finishes in ~1 minute.
+- Unknown space ≤ 2^40? → enumerate with a filter (e.g. Jacobi
+  pre-check dropping 50% of candidates).
+- Unknown space > 2^48? → algebra is the only route.
+
+Build a working enumerator **first**, even if you plan to replace it.
+A brute-force that returns the flag in 1 hour beats a Coppersmith
+attempt that returns nothing by the deadline.
+
+**Hard rule.** Do not write a third variant of the same algebraic
+attack (e.g. `coppersmith_biv.py` + `coppersmith_py.py` + `test_cop.py`)
+without first estimating the brute-force search space and rejecting
+it. If you catch yourself rewriting "the same attack but with
+different parameters", pivot.
+
 # Primary tools
 
 - `pycryptodome` — `Crypto.PublicKey.RSA`, `Crypto.Cipher.AES`, etc.
