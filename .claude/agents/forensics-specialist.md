@@ -81,3 +81,10 @@ Volatility, custom stego scripts, full pcap dissection are the right answer when
 
 - Flag recovered (often just from `strings` or `exiftool`).
 - After ~8 attempts across different stego/carving modes, write postmortem.
+
+# Hardware / signal-capture skill
+
+- `.claude/skills/hw/uart-sigrok.md` — decoding Saleae `.sal` UART/SPI/I2C
+  captures with `sigrok-cli` + the pre-installed `sal2sigrok` helper.
+  Use this any time you see `.sal`, `.logicdata`, or a challenge
+  description mentioning "logic analyzer capture" or "serial signal".

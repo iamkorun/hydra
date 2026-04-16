@@ -71,3 +71,10 @@ Pull in heavier tools (custom decoders, automated cipher-ID) only if a round of 
 - Flag recovered.
 - If multi-stage and the next stage is clearly a pwn/crypto/web/rev/forensics artifact, return control to the triage agent with a clear note: "this appears to be pwn/crypto/..., please re-dispatch with `<hint>`".
 - After ~5 failed decoding/OSINT attempts, write postmortem.
+
+# Hardware / signal-capture skill
+
+- `.claude/skills/hw/uart-sigrok.md` — decoding Saleae `.sal` UART/SPI/I2C
+  captures with `sigrok-cli` + the pre-installed `sal2sigrok` helper.
+  Use this any time you see `.sal`, `.logicdata`, or a challenge
+  description mentioning "logic analyzer capture" or "serial signal".
