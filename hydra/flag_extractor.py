@@ -9,21 +9,27 @@ _SPECIFIC = [
 _GENERIC = re.compile(r"[A-Za-z0-9_]+\{[^}]+\}")
 _FLAG_LINE = re.compile(r"FLAG:\s*(\S+)")
 
-# Hard cap on the body inside `{...}`. Longest real HTB flag seen so far
-# is ~95 chars; 128 is comfortable. Anything longer is almost always a
-# writeup excerpt or a prompt-injection payload.
 _MAX_BODY_LEN = 128
 
-# If a flag body contains any of these substrings, it's junk from a
-# WebSearch result / writeup, not a real flag.
-_BANNED_BODY_SUBSTRINGS = (
-    "REMINDER",
+# Banned whole-body substrings, case-insensitive. A real flag body never
+# contains these as part of an English word; leet substitutions (`fak3`,
+# `pl4ceholder`) are fine and remain accepted.
+_BANNED_BODY_SUBSTRINGS_CI = (
+    "reminder",
     "http://",
     "https://",
     "```",
     "<|",
-    "IGNORE PREVIOUS",
     "ignore previous",
+    "fake",
+    "placeholder",
+    "fixme",
+    "testing",
+    "please_ignore",
+    "pleaseignore",
+    "your_flag_here",
+    "sample",
+    "redacted",
 )
 
 
@@ -56,20 +62,21 @@ def _looks_like_flag(s: str) -> bool:
     m = _GENERIC.fullmatch(s)
     if not m:
         return False
-    # Extract body between first `{` and last `}` of the fullmatch.
     open_idx = s.index("{")
     body = s[open_idx + 1 : -1]
     if not body:
         return False
     if len(body) > _MAX_BODY_LEN:
         return False
-    # A real flag body has no whitespace (space, tab, CR, LF).
     if any(ch.isspace() for ch in body):
         return False
-    # Control / non-printable rejects obfuscated / binary payloads.
     if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in body):
         return False
-    for needle in _BANNED_BODY_SUBSTRINGS:
-        if needle in body:
+    body_lower = body.lower()
+    for needle in _BANNED_BODY_SUBSTRINGS_CI:
+        if needle in body_lower:
             return False
+    # Reject all-dot bodies (format-spec echoes like `HTB{...}`).
+    if body.strip(".") == "":
+        return False
     return True

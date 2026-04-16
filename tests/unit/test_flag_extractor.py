@@ -104,3 +104,48 @@ def test_accept_realistic_htb_flag(tmp_path: Path):
     stdout = "FLAG: HTB{Y0u'v3_m4st3r3d_0p3nWRT_d4t4_3xtr4ct10n!!_9887c2f5e4734bb64246276ddb70a34d}"
     flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
     assert flag == "HTB{Y0u'v3_m4st3r3d_0p3nWRT_d4t4_3xtr4ct10n!!_9887c2f5e4734bb64246276ddb70a34d}"
+
+# Phase-4 false-positive regressions.
+
+def test_reject_all_dots_body(tmp_path: Path):
+    (tmp_path / "flag.txt").write_text("")
+    stdout = "format: HTB{...}"
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
+    assert flag is None
+
+def test_reject_placeholder_fake_body(tmp_path: Path):
+    (tmp_path / "flag.txt").write_text("")
+    stdout = "strings output: HTB{FakeFlagForTesting}"
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
+    assert flag is None
+
+def test_reject_placeholder_ignore_body(tmp_path: Path):
+    (tmp_path / "flag.txt").write_text("")
+    stdout = "decoy: HTB{FlagForPreviousChallengePleaseIgnore}"
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
+    assert flag is None
+
+def test_reject_placeholder_in_flag_file(tmp_path: Path):
+    # Even if written to flag.txt, a placeholder-body flag is rejected.
+    (tmp_path / "flag.txt").write_text("HTB{placeholder_value}\n")
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout="")
+    assert flag is None
+
+def test_accept_realistic_short_flag_with_digits(tmp_path: Path):
+    (tmp_path / "flag.txt").write_text("")
+    stdout = "FLAG: HTB{a1B2c3}"
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
+    assert flag == "HTB{a1B2c3}"
+
+def test_accept_real_htb_underscored_flag(tmp_path: Path):
+    (tmp_path / "flag.txt").write_text("")
+    stdout = "FLAG: HTB{4n_unusual_s1ght1ng_1n_SSH_l0gs!}"
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
+    assert flag == "HTB{4n_unusual_s1ght1ng_1n_SSH_l0gs!}"
+
+def test_accept_single_word_training_flag(tmp_path: Path):
+    # Regression: easy/training challenges do have single-word flags.
+    # Make sure we don't overfit phase-4 by rejecting `picoCTF{welcome}`.
+    (tmp_path / "flag.txt").write_text("picoCTF{welcome}\n")
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout="")
+    assert flag == "picoCTF{welcome}"
