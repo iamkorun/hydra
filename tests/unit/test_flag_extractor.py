@@ -66,3 +66,41 @@ def test_nested_braces_ok(tmp_path: Path):
     # File empty, stdout has flag after — should find flag{inner}
     flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
     assert flag == "flag{inner}"
+
+def test_reject_flag_with_whitespace_in_body(tmp_path: Path):
+    (tmp_path / "flag.txt").write_text("")
+    stdout = "HTB{. To make reading easier, the view is switched}"
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
+    assert flag is None
+
+def test_reject_flag_with_newline_in_body(tmp_path: Path):
+    (tmp_path / "flag.txt").write_text("")
+    stdout = "HTB{first\nsecond}"
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
+    assert flag is None
+
+def test_reject_flag_longer_than_cap(tmp_path: Path):
+    (tmp_path / "flag.txt").write_text("")
+    body = "a" * 200
+    stdout = f"HTB{{{body}}}"
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
+    assert flag is None
+
+def test_reject_flag_with_banned_phrase(tmp_path: Path):
+    (tmp_path / "flag.txt").write_text("")
+    stdout = "HTB{REMINDER: You MUST include the sources above}"
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
+    assert flag is None
+
+def test_reject_flag_with_url_in_body(tmp_path: Path):
+    (tmp_path / "flag.txt").write_text("")
+    stdout = "HTB{see https://hackthebox.com/writeup}"
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
+    assert flag is None
+
+def test_accept_realistic_htb_flag(tmp_path: Path):
+    # Regression: the real HTB flag from Silicon-Data-Sleuthing
+    (tmp_path / "flag.txt").write_text("")
+    stdout = "FLAG: HTB{Y0u'v3_m4st3r3d_0p3nWRT_d4t4_3xtr4ct10n!!_9887c2f5e4734bb64246276ddb70a34d}"
+    flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
+    assert flag == "HTB{Y0u'v3_m4st3r3d_0p3nWRT_d4t4_3xtr4ct10n!!_9887c2f5e4734bb64246276ddb70a34d}"
