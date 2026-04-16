@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+"""sal2sigrok — unpack a Saleae Logic 2 .sal capture into one-byte-per-sample
+binary files, ready for `sigrok-cli --input-format binary`.
+
+A .sal file is a zip archive containing meta.json + digital_N.bin
+files, where each byte packs 8 consecutive samples of channel N
+(LSB-first). This script extracts the zip, unpacks each channel
+into a separate `<outdir>/channel_N.u8` file (one uint8 per sample,
+0 or 1), and prints the suggested sigrok-cli invocation for UART
+decoding.
+
+Usage:
+  sal2sigrok <input.sal> <outdir>
+
+Example:
+  sal2sigrok hw_debug.sal ./decoded
+  for baud in 9600 19200 38400 57600 115200 230400 460800 921600; do
+      echo "=== $baud ==="
+      sigrok-cli --input-format binary:numchannels=1:samplerate=$(cat ./decoded/samplerate.txt) \\
+                 --input-file ./decoded/channel_0.u8 \\
+                 --protocol-decoders uart:baudrate=$baud:rx=0 \\
+                 --protocol-decoder-annotations uart=rx-data 2>&1 | head -40
+  done
+"""
+from __future__ import annotations
+
+import json
+import sys
+import zipfile
+from pathlib import Path
+
+try:
+    import numpy as np
+except ImportError:
+    sys.stderr.write("error: numpy not installed. `pip install numpy`.\n")
+    sys.exit(1)
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 3:
+        sys.stderr.write("usage: sal2sigrok <input.sal> <outdir>\n")
+        return 2
+    src = Path(argv[1])
+    outdir = Path(argv[2])
+    if not src.exists():
+        sys.stderr.write(f"error: {src} does not exist\n")
+        return 1
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(src) as z:
+        names = z.namelist()
+        if "meta.json" not in names:
+            sys.stderr.write(
+                f"error: {src} is not a Saleae .sal archive (no meta.json)\n"
+            )
+            return 1
+        meta = json.loads(z.read("meta.json"))
+        z.extractall(outdir / "_raw")
+
+    sample_rate = _resolve_sample_rate(meta)
+    digital_files = sorted((outdir / "_raw").glob("digital_*.bin"))
+
+    for dig in digital_files:
+        idx = int(dig.stem.split("_")[1])
+        raw = np.fromfile(dig, dtype=np.uint8)
+        bits = np.unpackbits(raw, bitorder="little")
+        out = outdir / f"channel_{idx}.u8"
+        bits.astype(np.uint8).tofile(out)
+        print(f"unpacked channel {idx}: {len(bits)} samples -> {out}")
+
+    (outdir / "samplerate.txt").write_text(str(sample_rate) + "\n")
+    print(f"sample rate: {sample_rate} Hz -> {outdir}/samplerate.txt")
+
+    print()
+    print("try decoding UART across common bauds:")
+    print(
+        "  for baud in 9600 19200 38400 57600 115200 230400 460800 921600; do\n"
+        f"      echo === $baud ===\n"
+        f"      sigrok-cli --input-format binary:numchannels=1:samplerate=$(cat {outdir}/samplerate.txt) \\\n"
+        f"                 --input-file {outdir}/channel_0.u8 \\\n"
+        "                 --protocol-decoders uart:baudrate=$baud:rx=0 \\\n"
+        "                 --protocol-decoder-annotations uart=rx-data 2>&1 | head -40\n"
+        "  done"
+    )
+    return 0
+
+
+def _resolve_sample_rate(meta: dict) -> int:
+    # Saleae meta.json has evolved; look in the expected places.
+    for key in ("sample_rate", "samplerate", "sampleRate"):
+        if key in meta:
+            return int(meta[key])
+    captures = meta.get("captures") or []
+    if captures and isinstance(captures, list):
+        c0 = captures[0]
+        for key in ("sample_rate", "samplerate", "sampleRate"):
+            if key in c0:
+                return int(c0[key])
+    # Last resort: assume a common Saleae rate.
+    sys.stderr.write(
+        "warning: sample_rate not found in meta.json; defaulting to 25_000_000 Hz\n"
+    )
+    return 25_000_000
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

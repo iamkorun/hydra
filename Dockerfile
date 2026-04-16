@@ -88,4 +88,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 # Claude Code CLI (top layer — most churn)
 RUN npm install -g @anthropic-ai/claude-code
 
+# Custom helper binaries (sal2sigrok, etc.).
+COPY docker/bin/ /usr/local/bin/hydra/
+RUN ln -s /usr/local/bin/hydra/sal2sigrok /usr/local/bin/sal2sigrok
+
 WORKDIR /workspace
