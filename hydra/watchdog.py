@@ -23,6 +23,20 @@ from pathlib import Path
 
 _SOLVER_PATTERN = re.compile(r"/workspace/work/(solve|probe|exploit)\d+\.py$")
 
+
+def _monotonic() -> float:
+    """Monotonic clock wrapper — tests patch this, NOT ``time.monotonic``
+    directly, because patching ``time.monotonic`` globally breaks the
+    asyncio event loop's own scheduling."""
+    return time.monotonic()
+
+
+def _wall_time() -> float:
+    """Wall-clock wrapper — tests patch this, NOT ``time.time`` directly,
+    because patching ``time.time`` globally can cascade into logging,
+    subprocess, etc."""
+    return time.time()
+
 # USD per million tokens. (input, output, cache_creation). cache_read is
 # 10% of input. Fallback is opus (expensive side) so unknown models
 # don't under-count.
@@ -163,7 +177,7 @@ class Watchdog:
         for block in msg.get("content") or []:
             if block.get("type") != "tool_use":
                 continue
-            now = time.monotonic()
+            now = _monotonic()
             if self._state.first_tool_use_ts == 0.0:
                 self._state.first_tool_use_ts = now
             self._state.last_tool_use_ts = now
@@ -227,6 +241,33 @@ class Watchdog:
                     code="oom_preempt",
                     detail=f"RSS {pct:.1f}% >= {self.cfg.mem_kill_pct:.1f}%",
                 )
+            reason = self._check_idle_work()
+            if reason:
+                return reason
+
+    def _check_idle_work(self) -> KillReason | None:
+        if self._state.last_tool_use_ts == 0.0:
+            return None
+        mono_now = _monotonic()
+        wall_now = _wall_time()
+        try:
+            mtime = self.work_dir.stat().st_mtime
+        except FileNotFoundError:
+            return None
+        age = wall_now - mtime
+        since_tool = mono_now - self._state.last_tool_use_ts
+        if (
+            age > self.cfg.idle_work_timeout_s
+            and since_tool < self.cfg.poll_interval_s * 2
+        ):
+            return KillReason(
+                code="idle_work",
+                detail=(
+                    f"work/ unchanged {int(age)}s "
+                    f"while agent still active"
+                ),
+            )
+        return None
 
 
 def docker_mem_sampler(
