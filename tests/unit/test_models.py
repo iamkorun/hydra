@@ -41,6 +41,23 @@ def test_result_solved():
     assert r.flag == "flag{abc}"
     assert r.reason is None
 
+def test_challenge_accepts_expected_format_and_prefix():
+    c = Challenge(
+        name="x",
+        description="d",
+        expected_format=r"HTB\{[^}]+\}",
+        flag_prefix="HTB",
+    )
+    assert c.expected_format == r"HTB\{[^}]+\}"
+    assert c.flag_prefix == "HTB"
+
+
+def test_challenge_defaults_both_fields_to_none():
+    c = Challenge(name="x", description="d")
+    assert c.expected_format is None
+    assert c.flag_prefix is None
+
+
 def test_result_failed_has_reason():
     r = Result(
         name="x",

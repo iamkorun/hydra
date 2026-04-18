@@ -15,6 +15,11 @@ class Challenge:
     hints: list[str] = field(default_factory=list)
     category: str | None = None
     points: int | None = None
+    # Optional pre-commit-gate hints. `expected_format` is a regex the
+    # whole flag must fullmatch. `flag_prefix` is the text before the
+    # `{` — when set, a mismatched prefix is a REJECT (not a WARN).
+    expected_format: str | None = None
+    flag_prefix: str | None = None
 
 @dataclass(frozen=True)
 class Result:
