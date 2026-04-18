@@ -9,7 +9,11 @@ JSON:
       "stderr": "<stderr to emit>",
       "exit_code": 0,
       "flag_file": "<text to write to /workspace/flag.txt>",   # optional
-      "sleep_s": 0                                             # optional
+      "sleep_s": 0,                                            # optional
+      "emit_jsonl_events": [                                   # optional
+          {...},  # JSONL events streamed to stdout (watchdog tails this)
+      ],
+      "then_sleep_s": 0                                        # optional
     },
     ...
   }
@@ -81,8 +85,28 @@ def main():
                 (Path(src) / "flag.txt").write_text(matched["flag_file"])
             break
 
+    # Static stdout/stderr first (classic scenarios).
     sys.stdout.write(matched.get("stdout", ""))
     sys.stderr.write(matched.get("stderr", ""))
+    sys.stdout.flush()
+
+    # Emit JSONL events (watchdog tails these via /workspace/logs/...).
+    # The docker_worker streams our stdout straight into
+    # `runs/<name>/logs/claude.stdout.jsonl`, which is the watchdog's
+    # input. Spacing events by 50ms gives the tail loop time to pick
+    # them up in order.
+    events = matched.get("emit_jsonl_events") or []
+    for e in events:
+        sys.stdout.write(json.dumps(e) + "\n")
+        sys.stdout.flush()
+        time.sleep(0.05)
+
+    # Optional trailing sleep simulates a stalled worker — lets the
+    # watchdog fire before the fake container exits.
+    then_sleep_s = matched.get("then_sleep_s")
+    if then_sleep_s:
+        time.sleep(float(then_sleep_s))
+
     return matched.get("exit_code", 0)
 
 

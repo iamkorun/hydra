@@ -404,7 +404,7 @@ def test_exit_137_with_flag_is_solved_uncertain(tmp_path, monkeypatch):
     )
 
     async def _fake_attempt(self, c, subpath):
-        return wd, stub_wr
+        return wd, stub_wr, None
     monkeypatch.setattr(Orchestrator, "_attempt", _fake_attempt)
 
     c = Challenge(name="Foo", description="x", remote="example.com:1234")
@@ -504,3 +504,50 @@ async def test_skip_already_solved(tmp_path, monkeypatch):
     await orch.run([Challenge(name="a", description="x"), Challenge(name="b", description="y")])
     names = [r.name for r in writer.appended]
     assert names == ["b"]
+
+
+async def test_watchdog_kill_overrides_worker_result(tmp_path, monkeypatch):
+    """Watchdog returning a KillReason must override the worker's own
+    WorkerResult: status = failed, reason = 'watchdog: <code> (...)',
+    flag = None even if flag.txt happened to hold a candidate."""
+    from hydra.watchdog import KillReason
+
+    async def slow_worker(*args, **kwargs):
+        wd = kwargs["workdir"]
+        wd.mkdir(parents=True, exist_ok=True)
+        (wd / "flag.txt").write_text("HTB{looks_good_but_loop_detected}\n")
+        await asyncio.sleep(0.2)
+        return WorkerResult(
+            name=kwargs["name"], exit_code=0,
+            stdout="", stderr="", timed_out=False, duration_s=0.2,
+        )
+
+    class InstantKillWatchdog:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def run(self) -> KillReason:
+            return KillReason(code="bash_repeat", detail="test-triggered")
+
+    async def no_op_stop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("hydra.orchestrator.run_worker", slow_worker)
+    monkeypatch.setattr("hydra.orchestrator.Watchdog", InstantKillWatchdog)
+    monkeypatch.setattr("hydra.orchestrator.stop_container", no_op_stop)
+
+    writer = FakeWriter()
+    cfg = OrchestratorConfig(
+        parallel=1, timeout_s=30, model="m",
+        image="hydra-worker", api_key="sk",
+        runs_dir=tmp_path / "runs",
+        failures_dir=tmp_path / "failures",
+        prompt_volumes={},
+        watchdog_enabled=True,
+    )
+    orch = Orchestrator(cfg, writer=writer)
+    await orch.run([Challenge(name="a", description="x", flag_prefix="HTB")])
+    [r] = writer.appended
+    assert r.status == "failed"
+    assert r.flag is None
+    assert "watchdog: bash_repeat" in (r.reason or "")

@@ -92,3 +92,62 @@ async def test_mixed_batch(tmp_path, fake_docker):
     assert by_name["b"].status == "error"
     assert "explode" in (by_name["b"].reason or "")
     assert by_name["c"].status == "solved"
+
+
+def test_watchdog_kills_looping_agent(fake_docker, tmp_path, monkeypatch):
+    """End-to-end: fake-docker agent emits 3 identical Bash commands
+    then stalls. Watchdog must kill; orchestrator records `failed`
+    with a `watchdog:` reason; flags.json stays clean."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake")
+    monkeypatch.chdir(tmp_path)
+
+    loopy_events = [
+        {
+            "type": "assistant",
+            "message": {
+                "id": f"msg_{i}",
+                "content": [{
+                    "type": "tool_use",
+                    "name": "Bash",
+                    "input": {"command": "curl http://10.0.0.1/probe"},
+                }],
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 10,
+                    "cache_read_input_tokens": 0,
+                    "cache_creation_input_tokens": 0,
+                },
+            },
+        }
+        for i in range(3)
+    ]
+    scenario = {
+        "loopy": {
+            "emit_jsonl_events": loopy_events,
+            "then_sleep_s": 5,
+            "exit_code": 0,
+        }
+    }
+    fake_docker.write_text(json.dumps(scenario))
+
+    challenges_path = tmp_path / "chals.json"
+    challenges_path.write_text(json.dumps(
+        [{"name": "loopy", "description": "stub"}]
+    ))
+
+    from hydra.cli import main
+    rc = main([
+        str(challenges_path),
+        "--use-api-key",
+        "--timeout", "5",
+        "--watchdog-max-bash-repeats", "3",
+        "--watchdog-idle-work-timeout", "1",
+        "--parallel", "1",
+    ])
+    assert rc == 1  # no solves
+    results = json.loads((tmp_path / "chals" / "results.json").read_text())
+    [r] = results["challenges"]
+    assert r["status"] == "failed"
+    assert r["reason"].startswith("watchdog:")
+    flags = json.loads((tmp_path / "chals" / "flags.json").read_text())
+    assert flags.get("loopy") is None

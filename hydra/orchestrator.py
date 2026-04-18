@@ -7,11 +7,14 @@ from hydra.models import Challenge, Result
 from hydra.workdir import build_workdir
 from hydra.flag_extractor import extract_flag
 from hydra.failures import write_failure_md, write_failures_summary
-from hydra.docker_worker import run_worker, WorkerResult
+from hydra.docker_worker import run_worker, WorkerResult, stop_container
 from hydra.heartbeat import Heartbeat
 from hydra.usage import parse_usage_dir
 from hydra.remote_contact import was_remote_contacted
 from hydra.flag_gate import Verdict as GateVerdictEnum, check as gate_check
+from hydra.watchdog import (
+    Watchdog, WatchdogConfig, KillReason, docker_mem_sampler,
+)
 
 @dataclass
 class OrchestratorConfig:
@@ -28,6 +31,14 @@ class OrchestratorConfig:
     container_memory: str = "8g"
     skip_names: set[str] = field(default_factory=set)
     attempts: int = 1  # pass@k: N parallel attempts per challenge, first flag wins
+    # Watchdog tunables. `watchdog_enabled=False` skips construction
+    # entirely (used by tests that don't need it and by `--no-watchdog`).
+    watchdog_enabled: bool = True
+    watchdog_cost_cap_usd: float = 10.0
+    watchdog_mem_kill_pct: float = 90.0
+    watchdog_max_same_bash_repeats: int = 3
+    watchdog_max_solver_variants: int = 5
+    watchdog_idle_work_timeout_s: float = 180.0
 
 class Orchestrator:
     def __init__(
@@ -103,16 +114,21 @@ class Orchestrator:
         try:
             if self.cfg.attempts <= 1:
                 async with self._sem:
-                    wd, wr = await self._attempt(c, subpath=None)
+                    wd, wr, kill = await self._attempt(c, subpath=None)
             else:
-                wd, wr = await self._pass_at_k(c)
+                wd, wr, kill = await self._pass_at_k(c)
         finally:
             if self._hb is not None:
                 self._hb.untrack(c.name)
 
         flag = extract_flag(flag_file=wd / "flag.txt", stdout=wr.stdout)
 
-        if wr.timed_out:
+        if kill is not None:
+            # Watchdog wins over everything else — even if flag.txt holds a
+            # candidate, a tripped watchdog means the run wasn't healthy.
+            flag = None
+            status, reason = "failed", str(kill)
+        elif wr.timed_out:
             status, reason = "timeout", f"wall-clock timeout after {self.cfg.timeout_s}s"
         elif flag:
             gate = gate_check(flag, c, wd)
@@ -172,10 +188,12 @@ class Orchestrator:
 
     async def _attempt(
         self, c: Challenge, *, subpath: str | None
-    ) -> tuple[Path, WorkerResult]:
-        """Run a single solve attempt, returning (workdir, worker_result)."""
+    ) -> tuple[Path, WorkerResult, KillReason | None]:
+        """Run one solve attempt alongside a Watchdog. Returns
+        (workdir, worker_result, kill_reason_or_None)."""
         wd = build_workdir(c, runs_dir=self.cfg.runs_dir, subpath=subpath)
-        wr = await run_worker(
+        container_name = f"hydra-{c.name}"
+        worker_task = asyncio.create_task(run_worker(
             name=c.name,
             workdir=wd,
             image=self.cfg.image,
@@ -186,24 +204,87 @@ class Orchestrator:
             container_cpus=self.cfg.container_cpus,
             container_memory=self.cfg.container_memory,
             prompt_volumes=self.cfg.prompt_volumes,
-        )
-        return wd, wr
+        ))
+        if not self.cfg.watchdog_enabled:
+            try:
+                wr = await worker_task
+            except asyncio.CancelledError:
+                worker_task.cancel()
+                await asyncio.gather(worker_task, return_exceptions=True)
+                raise
+            return wd, wr, None
 
-    async def _pass_at_k(self, c: Challenge) -> tuple[Path, WorkerResult]:
-        """Fan out N attempts. First one to produce a flag wins; cancel the rest.
-        Each attempt consumes a semaphore slot, so N parallel attempts reduce
-        the effective cross-challenge concurrency by N."""
+        jsonl = wd / "logs" / "claude.stdout.jsonl"
+        watchdog = Watchdog(
+            container_name=container_name,
+            jsonl_path=jsonl,
+            work_dir=wd / "work",
+            config=WatchdogConfig(
+                cost_cap_usd=self.cfg.watchdog_cost_cap_usd,
+                mem_kill_pct=self.cfg.watchdog_mem_kill_pct,
+                max_same_bash_repeats=self.cfg.watchdog_max_same_bash_repeats,
+                max_solver_variants=self.cfg.watchdog_max_solver_variants,
+                idle_work_timeout_s=self.cfg.watchdog_idle_work_timeout_s,
+            ),
+            mem_sampler=docker_mem_sampler(),
+            model_name=self.cfg.model,
+        )
+        wd_task = asyncio.create_task(watchdog.run())
+
+        try:
+            done, _pending = await asyncio.wait(
+                [worker_task, wd_task], return_when=asyncio.FIRST_COMPLETED,
+            )
+        except asyncio.CancelledError:
+            # Parent cancellation (e.g. pass@k winner cancels siblings):
+            # tear down both child tasks before propagating.
+            for t in (worker_task, wd_task):
+                t.cancel()
+            await asyncio.gather(worker_task, wd_task, return_exceptions=True)
+            raise
+        if wd_task in done:
+            kill_reason = wd_task.result()
+            # Stop the container so the worker unblocks promptly.
+            await stop_container("docker", container_name)
+            try:
+                wr = await asyncio.wait_for(worker_task, timeout=30)
+            except TimeoutError:
+                worker_task.cancel()
+                try:
+                    wr = await worker_task
+                except asyncio.CancelledError:
+                    wr = WorkerResult(
+                        name=c.name, exit_code=-9,
+                        stdout="", stderr="",
+                        timed_out=False, duration_s=0.0,
+                    )
+            return wd, wr, kill_reason
+        # Worker finished first — cancel the watchdog.
+        wd_task.cancel()
+        try:
+            await wd_task
+        except asyncio.CancelledError:
+            pass
+        wr = worker_task.result()
+        return wd, wr, None
+
+    async def _pass_at_k(
+        self, c: Challenge
+    ) -> tuple[Path, WorkerResult, KillReason | None]:
+        """Fan out N attempts. First one to produce a clean flag wins;
+        cancel the rest. Watchdog kills make an attempt ineligible for
+        winner status (kill reason propagates on full-fleet kill)."""
         assert self._sem is not None
         k = self.cfg.attempts
 
-        async def one_slotted(idx: int) -> tuple[Path, WorkerResult]:
+        async def one_slotted(idx: int):
             async with self._sem:
                 return await self._attempt(c, subpath=f"a{idx + 1}")
 
         tasks = [asyncio.create_task(one_slotted(i)) for i in range(k)]
         pending = set(tasks)
         winner: tuple[Path, WorkerResult, str] | None = None  # wd, wr, flag
-        last: tuple[Path, WorkerResult] | None = None
+        last: tuple[Path, WorkerResult, KillReason | None] | None = None
 
         try:
             while pending:
@@ -212,12 +293,12 @@ class Orchestrator:
                 )
                 for t in done:
                     try:
-                        wd, wr = t.result()
+                        wd, wr, kill = t.result()
                     except asyncio.CancelledError:
                         continue
-                    last = (wd, wr)
+                    last = (wd, wr, kill)
                     flag = extract_flag(flag_file=wd / "flag.txt", stdout=wr.stdout)
-                    if flag and not wr.timed_out:
+                    if flag and not wr.timed_out and kill is None:
                         winner = (wd, wr, flag)
                         break
                 if winner:
@@ -235,7 +316,7 @@ class Orchestrator:
             # so write the extracted flag string rather than copying the file.
             top_flag = self.cfg.runs_dir / c.name / "flag.txt"
             top_flag.write_text(winner[2] + "\n")
-            return winner[0], winner[1]
+            return winner[0], winner[1], None
         assert last is not None, "all pass@k attempts cancelled without completing"
         return last
 

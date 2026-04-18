@@ -276,3 +276,39 @@ def test_run_returns_2_on_normalization_error(tmp_path, capsys):
     rc = asyncio.run(_run(cfg))
     assert rc == 2
     assert "error" in capsys.readouterr().err
+
+
+def test_cli_parses_watchdog_flags():
+    from hydra.cli import build_parser
+
+    ns = build_parser().parse_args(["chal.json", "--no-watchdog"])
+    assert ns.no_watchdog is True
+
+    ns = build_parser().parse_args([
+        "chal.json",
+        "--watchdog-cost-cap", "3.5",
+        "--watchdog-mem-kill-pct", "75",
+    ])
+    assert ns.watchdog_cost_cap == 3.5
+    assert ns.watchdog_mem_kill_pct == 75.0
+
+
+def test_resolve_config_plumbs_watchdog_to_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake")
+    from hydra.cli import build_parser, resolve_config
+
+    ns = build_parser().parse_args([
+        "chal.json", "--use-api-key",
+        "--watchdog-cost-cap", "2.0",
+        "--watchdog-mem-kill-pct", "80.5",
+        "--watchdog-max-bash-repeats", "5",
+        "--watchdog-max-solver-variants", "8",
+        "--watchdog-idle-work-timeout", "300",
+    ])
+    cfg = resolve_config(ns, root=tmp_path)
+    assert cfg.watchdog_enabled is True
+    assert cfg.watchdog_cost_cap_usd == 2.0
+    assert cfg.watchdog_mem_kill_pct == 80.5
+    assert cfg.watchdog_max_same_bash_repeats == 5
+    assert cfg.watchdog_max_solver_variants == 8
+    assert cfg.watchdog_idle_work_timeout_s == 300.0
