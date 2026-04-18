@@ -1,9 +1,10 @@
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
 
-from hydra.watchdog import Watchdog, WatchdogConfig
+from hydra.watchdog import KillReason, Watchdog, WatchdogConfig
 
 
 def _cfg(**overrides) -> WatchdogConfig:
@@ -32,6 +33,72 @@ async def test_run_returns_when_cancelled(tmp_path: Path):
     )
     task = asyncio.create_task(wd.run())
     await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+async def _write_jsonl(path: Path, events: list[dict]) -> None:
+    with path.open("a") as f:
+        for e in events:
+            f.write(json.dumps(e) + "\n")
+            f.flush()
+            await asyncio.sleep(0.005)
+
+
+def _bash_event(command: str) -> dict:
+    return {
+        "type": "assistant",
+        "message": {
+            "id": f"msg_{hash(command) & 0xffff:04x}",
+            "content": [{
+                "type": "tool_use",
+                "name": "Bash",
+                "input": {"command": command},
+            }],
+            "usage": {"input_tokens": 1, "output_tokens": 1,
+                      "cache_read_input_tokens": 0,
+                      "cache_creation_input_tokens": 0},
+        },
+    }
+
+
+async def test_kill_on_same_bash_repeat(tmp_path: Path):
+    jsonl = tmp_path / "claude.stdout.jsonl"
+    jsonl.write_text("")
+    (tmp_path / "work").mkdir()
+    wd = Watchdog(
+        container_name="fake",
+        jsonl_path=jsonl,
+        work_dir=tmp_path / "work",
+        config=_cfg(max_same_bash_repeats=3),
+        mem_sampler=lambda _: 0.0,
+    )
+    task = asyncio.create_task(wd.run())
+    cmd = "curl http://10.0.0.1:8080/probe"
+    await _write_jsonl(jsonl, [_bash_event(cmd) for _ in range(3)])
+    result = await asyncio.wait_for(task, timeout=1.0)
+    assert isinstance(result, KillReason)
+    assert result.code == "bash_repeat"
+    assert "curl http" in result.detail
+
+
+async def test_distinct_bash_commands_do_not_trigger(tmp_path: Path):
+    jsonl = tmp_path / "claude.stdout.jsonl"
+    jsonl.write_text("")
+    (tmp_path / "work").mkdir()
+    wd = Watchdog(
+        container_name="fake",
+        jsonl_path=jsonl,
+        work_dir=tmp_path / "work",
+        config=_cfg(max_same_bash_repeats=3),
+        mem_sampler=lambda _: 0.0,
+    )
+    task = asyncio.create_task(wd.run())
+    cmds = [f"echo {i}" for i in range(10)]
+    await _write_jsonl(jsonl, [_bash_event(c) for c in cmds])
+    await asyncio.sleep(0.05)
+    assert not task.done()
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task

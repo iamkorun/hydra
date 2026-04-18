@@ -13,6 +13,8 @@ arithmetic on the stream-json events the agent already writes.
 from __future__ import annotations
 
 import asyncio
+import json
+import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -91,8 +93,57 @@ class Watchdog:
             raise
 
     async def _tail_loop(self) -> KillReason:
+        """Poll-tail the jsonl file and dispatch parsed events to
+        event-based evaluators. Returns on the first kill signal."""
+        pos = 0
         while True:
+            try:
+                data = self.jsonl_path.read_text()
+            except (FileNotFoundError, OSError):
+                data = ""
+            if len(data) > pos:
+                fresh = data[pos:]
+                pos = len(data)
+                for line in fresh.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    reason = self._on_event(event)
+                    if reason:
+                        return reason
             await asyncio.sleep(self.cfg.tail_interval_s)
+
+    def _on_event(self, event: dict) -> KillReason | None:
+        if event.get("type") != "assistant":
+            return None
+        msg = event.get("message") or {}
+        for block in msg.get("content") or []:
+            if block.get("type") != "tool_use":
+                continue
+            now = time.monotonic()
+            if self._state.first_tool_use_ts == 0.0:
+                self._state.first_tool_use_ts = now
+            self._state.last_tool_use_ts = now
+            if block.get("name") == "Bash":
+                cmd = (block.get("input") or {}).get("command", "")
+                reason = self._check_bash_repeat(cmd)
+                if reason:
+                    return reason
+        return None
+
+    def _check_bash_repeat(self, command: str) -> KillReason | None:
+        prefix = command[:50]
+        self._state.bash_counts[prefix] += 1
+        if self._state.bash_counts[prefix] >= self.cfg.max_same_bash_repeats:
+            return KillReason(
+                code="bash_repeat",
+                detail=f"same Bash {self.cfg.max_same_bash_repeats}x: {prefix!r}",
+            )
+        return None
 
     async def _poll_loop(self) -> KillReason:
         while True:
