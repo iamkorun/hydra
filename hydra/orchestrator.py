@@ -133,26 +133,31 @@ class Orchestrator:
         elif flag:
             gate = gate_check(flag, c, wd)
             log_file = wd / "logs" / "claude.stdout.jsonl"
+
+            # REJECT is terminal — flag never reaches flags.json.
             if gate.verdict == GateVerdictEnum.REJECT:
                 flag = None
                 status, reason = "failed", f"flag_gate rejected: {gate.reason}"
-            elif wr.exit_code == 137:
-                status = "solved_uncertain"
-                reason = (
-                    "worker exited 137 (SIGKILL / OOM) — flag may be stale, "
-                    "verify manually before submitting"
-                )
-            elif c.remote and not was_remote_contacted(log_file, c.remote):
-                status = "solved_uncertain"
-                reason = (
-                    f"flag extracted but no evidence agent contacted remote "
-                    f"{c.remote} — likely false positive from README/binary string"
-                )
-            elif gate.verdict == GateVerdictEnum.WARN:
-                status = "solved_uncertain"
-                reason = f"flag_gate warn: {gate.reason}"
             else:
-                status, reason = "solved", None
+                # Collect every soft-demotion signal so Result.reason
+                # shows all of them, not just the first match.
+                soft: list[str] = []
+                if wr.exit_code == 137:
+                    soft.append(
+                        "worker exited 137 (SIGKILL / OOM) — flag may be stale"
+                    )
+                if c.remote and not was_remote_contacted(log_file, c.remote):
+                    soft.append(
+                        f"no evidence agent contacted remote {c.remote} — "
+                        "likely false positive from README/binary string"
+                    )
+                if gate.verdict == GateVerdictEnum.WARN:
+                    soft.append(f"flag_gate warn: {gate.reason}")
+
+                if soft:
+                    status, reason = "solved_uncertain", "; ".join(soft)
+                else:
+                    status, reason = "solved", None
         elif wr.exit_code != 0:
             status = "error"
             reason = (wr.stderr[-1024:] if wr.stderr else f"worker exited {wr.exit_code}")

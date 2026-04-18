@@ -551,3 +551,35 @@ async def test_watchdog_kill_overrides_worker_result(tmp_path, monkeypatch):
     assert r.status == "failed"
     assert r.flag is None
     assert "watchdog: bash_repeat" in (r.reason or "")
+
+
+async def test_multiple_soft_demotions_accumulate_reasons(tmp_path, monkeypatch):
+    """Exit 137 + gate WARN (no_scratch) both demote to solved_uncertain.
+    Reason must mention both signals so humans can verify correctly,
+    not get only the first-match string."""
+    async def worker_oom_no_scratch(*args, **kwargs):
+        wd = kwargs["workdir"]
+        wd.mkdir(parents=True, exist_ok=True)
+        (wd / "flag.txt").write_text("HTB{body}\n")
+        # no work/ dir → no_scratch WARN
+        return WorkerResult(
+            name=kwargs["name"], exit_code=137,
+            stdout="", stderr="", timed_out=False, duration_s=0.1,
+        )
+
+    monkeypatch.setattr("hydra.orchestrator.run_worker", worker_oom_no_scratch)
+    writer = FakeWriter()
+    cfg = OrchestratorConfig(
+        parallel=1, timeout_s=30, model="m",
+        image="hydra-worker", api_key="sk",
+        runs_dir=tmp_path / "runs",
+        failures_dir=tmp_path / "failures",
+        prompt_volumes={},
+        watchdog_enabled=False,
+    )
+    orch = Orchestrator(cfg, writer=writer)
+    await orch.run([Challenge(name="a", description="x", flag_prefix="HTB")])
+    [r] = writer.appended
+    assert r.status == "solved_uncertain"
+    assert "OOM" in (r.reason or "") or "137" in (r.reason or "")
+    assert "no_scratch" in (r.reason or "")
