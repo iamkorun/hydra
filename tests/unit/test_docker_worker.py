@@ -106,7 +106,7 @@ async def test_timeout_kills_container(tmp_path, monkeypatch):
 
     # Stub `docker stop` helper to just mark kill.
     async def fake_stop(*a, **kw): return None
-    monkeypatch.setattr("hydra.docker_worker._docker_stop", fake_stop)
+    monkeypatch.setattr("hydra.docker_worker.stop_container", fake_stop)
 
     wd = tmp_path / "runs" / "x"
     (wd / "logs").mkdir(parents=True)
