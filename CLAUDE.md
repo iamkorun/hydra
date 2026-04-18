@@ -63,6 +63,7 @@ Budget at most two re-dispatches before writing a postmortem.
 - Do not spend more than your container's wall-clock budget. If stdout has been idle for 5 minutes with no new tool calls, stop.
 - Do not connect to services that aren't explicitly mentioned in `README.md` or `hints.md`.
 - **Flag candidates are gated.** A broken flag (unclosed brace, wrong prefix, missing scratch) won't reach `flags.json`. Write `./flag.txt` only when you've derived the complete flag. Partial progress belongs in `./work/`, not `./flag.txt`.
+- **Your container is supervised.** A deterministic watchdog on the host tails your `logs/claude.stdout.jsonl` and will kill this container if you: (a) run the same Bash prefix 3+ times, (b) write >5 `solveN`/`probeN`/`exploitN.py` variants, (c) leave `work/` idle >3 min while still tool-using, (d) exceed the cost cap, or (e) approach OOM. Diagnose the failure and change approach; don't just retry.
 
 ## Meta skills (consult when the work calls for them)
 

@@ -179,7 +179,26 @@ log turns silent shortcuts into an auditable signal.
 Hydra ships two deterministic supervision layers. Both run per-worker,
 use zero tokens, and can be tuned via CLI flags.
 
-<!-- Watchdog subsection added in a later wave -->
+### Watchdog (sidecar)
+
+Runs alongside each worker container and tails
+`runs/<name>/logs/claude.stdout.jsonl` for bad-behavior signals. Kills
+the container before it blows its budget. Signals:
+
+| Code | Trigger | CLI flag |
+|---|---|---|
+| `bash_repeat` | Same Bash command prefix fires N+ times | `--watchdog-max-bash-repeats` (default 3) |
+| `solver_spam` | >N files written matching `work/{solve,probe,exploit}NNN.py` | `--watchdog-max-solver-variants` (default 5) |
+| `cost_cap` | Estimated token cost exceeds cap | `--watchdog-cost-cap` (default $10) |
+| `oom_preempt` | Container RSS ≥ X% of memory limit | `--watchdog-mem-kill-pct` (default 90%) |
+| `idle_work` | `work/` unchanged N sec while agent still tool-using | `--watchdog-idle-work-timeout` (default 180s) |
+
+Disable with `--no-watchdog` (for debugging the agent itself).
+
+Killed runs land in `results.jsonl` as `status: failed` with
+`reason: watchdog: <code> (<detail>)` — grep-friendly, and
+`--retry-failed` re-picks them.
+
 
 ### Flag gate (pre-commit)
 
