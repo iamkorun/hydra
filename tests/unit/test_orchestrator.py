@@ -55,6 +55,7 @@ async def test_solve_batch(tmp_path, monkeypatch):
         runs_dir=tmp_path / "runs",
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
+        watchdog=None,
     )
     challenges = [
         Challenge(name="a", description="x"),
@@ -86,6 +87,7 @@ async def test_respects_parallel_semaphore(tmp_path, monkeypatch):
         runs_dir=tmp_path / "runs",
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
+        watchdog=None,
     )
     challenges = [Challenge(name=f"c{i}", description="x") for i in range(5)]
     orch = Orchestrator(cfg, writer=FakeWriter())
@@ -101,6 +103,7 @@ async def test_timeout_status(tmp_path, monkeypatch):
         runs_dir=tmp_path / "runs",
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
+        watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="a", description="x")])
@@ -118,6 +121,7 @@ async def test_failed_status_on_clean_exit_no_flag(tmp_path, monkeypatch):
         runs_dir=tmp_path / "runs",
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
+        watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="a", description="x")])
@@ -164,6 +168,7 @@ async def test_usage_is_parsed_from_transcript_into_result(tmp_path, monkeypatch
         runs_dir=tmp_path / "runs",
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
+        watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="a", description="x")])
@@ -184,6 +189,7 @@ async def test_error_status_on_nonzero_exit(tmp_path, monkeypatch):
         runs_dir=tmp_path / "runs",
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
+        watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="a", description="x")])
@@ -234,6 +240,7 @@ async def test_passk_first_flag_wins(tmp_path, monkeypatch):
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
         attempts=3,
+        watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="a", description="x")])
@@ -280,6 +287,7 @@ async def test_passk_winner_with_stdout_only_flag(tmp_path, monkeypatch):
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
         attempts=2,
+        watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="a", description="x")])
@@ -308,6 +316,7 @@ async def test_passk_all_fail(tmp_path, monkeypatch):
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
         attempts=2,
+        watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="a", description="x")])
@@ -342,6 +351,7 @@ async def test_one_exception_does_not_cancel_siblings(tmp_path, monkeypatch):
         runs_dir=tmp_path / "runs",
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
+        watchdog=None,
     )
     challenges = [
         Challenge(name="a", description="x"),
@@ -389,6 +399,7 @@ def test_exit_137_with_flag_is_solved_uncertain(tmp_path, monkeypatch):
         runs_dir=runs,
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
+        watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
     import asyncio
@@ -449,6 +460,7 @@ async def test_gate_rejects_unclosed_flag_keeps_it_out_of_flags_json(
         runs_dir=tmp_path / "runs",
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
+        watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="a", description="x", flag_prefix="WANLAI")])
@@ -480,6 +492,7 @@ async def test_gate_warn_demotes_to_solved_uncertain(tmp_path, monkeypatch):
         runs_dir=tmp_path / "runs",
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
+        watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="a", description="x", flag_prefix="HTB")])
@@ -499,6 +512,7 @@ async def test_skip_already_solved(tmp_path, monkeypatch):
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
         skip_names={"a"},
+        watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="a", description="x"), Challenge(name="b", description="y")])
@@ -510,7 +524,7 @@ async def test_watchdog_kill_overrides_worker_result(tmp_path, monkeypatch):
     """Watchdog returning a KillReason must override the worker's own
     WorkerResult: status = failed, reason = 'watchdog: <code> (...)',
     flag = None even if flag.txt happened to hold a candidate."""
-    from hydra.watchdog import KillReason
+    from hydra.watchdog import KillReason, WatchdogConfig
 
     async def slow_worker(*args, **kwargs):
         wd = kwargs["workdir"]
@@ -543,7 +557,11 @@ async def test_watchdog_kill_overrides_worker_result(tmp_path, monkeypatch):
         runs_dir=tmp_path / "runs",
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
-        watchdog_enabled=True,
+        watchdog=WatchdogConfig(
+            cost_cap_usd=10.0, mem_kill_pct=90.0,
+            max_same_bash_repeats=3, max_solver_variants=5,
+            idle_work_timeout_s=180.0,
+        ),
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="a", description="x", flag_prefix="HTB")])
@@ -564,7 +582,7 @@ async def test_attempt_shares_container_name_between_worker_and_watchdog(
     After the fix, _attempt generates the canonical name ONCE and hands
     the same string to both run_worker and Watchdog.
     """
-    from hydra.watchdog import KillReason
+    from hydra.watchdog import KillReason, WatchdogConfig
 
     captured_worker: dict = {}
     captured_wd: list[str] = []
@@ -599,7 +617,11 @@ async def test_attempt_shares_container_name_between_worker_and_watchdog(
         runs_dir=tmp_path / "runs",
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
-        watchdog_enabled=True,
+        watchdog=WatchdogConfig(
+            cost_cap_usd=10.0, mem_kill_pct=90.0,
+            max_same_bash_repeats=3, max_solver_variants=5,
+            idle_work_timeout_s=180.0,
+        ),
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="Chal-1", description="x")])
@@ -614,6 +636,34 @@ async def test_attempt_shares_container_name_between_worker_and_watchdog(
     assert captured_wd == [shared]
     # 4. stop_container was called with the SAME name.
     assert captured_stop == [shared]
+
+
+def test_orchestrator_config_accepts_watchdog_object():
+    """Collapsed config: `watchdog` is the sole knob; `None` disables."""
+    from pathlib import Path as _P
+    from hydra.watchdog import WatchdogConfig
+    cfg_on = OrchestratorConfig(
+        parallel=1, timeout_s=10, model="m",
+        image="i", api_key="sk",
+        runs_dir=_P("/tmp"), failures_dir=_P("/tmp"),
+        prompt_volumes={},
+        watchdog=WatchdogConfig(
+            cost_cap_usd=5.0, mem_kill_pct=90.0,
+            max_same_bash_repeats=3, max_solver_variants=5,
+            idle_work_timeout_s=180.0,
+        ),
+    )
+    assert cfg_on.watchdog is not None
+    assert cfg_on.watchdog.cost_cap_usd == 5.0
+
+    cfg_off = OrchestratorConfig(
+        parallel=1, timeout_s=10, model="m",
+        image="i", api_key="sk",
+        runs_dir=_P("/tmp"), failures_dir=_P("/tmp"),
+        prompt_volumes={},
+        watchdog=None,
+    )
+    assert cfg_off.watchdog is None
 
 
 async def test_multiple_soft_demotions_accumulate_reasons(tmp_path, monkeypatch):
@@ -638,7 +688,7 @@ async def test_multiple_soft_demotions_accumulate_reasons(tmp_path, monkeypatch)
         runs_dir=tmp_path / "runs",
         failures_dir=tmp_path / "failures",
         prompt_volumes={},
-        watchdog_enabled=False,
+        watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
     await orch.run([Challenge(name="a", description="x", flag_prefix="HTB")])
