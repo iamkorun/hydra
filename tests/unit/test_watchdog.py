@@ -102,3 +102,40 @@ async def test_distinct_bash_commands_do_not_trigger(tmp_path: Path):
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+def _write_event(name: str) -> dict:
+    return {
+        "type": "assistant",
+        "message": {
+            "id": f"msg_{hash(name) & 0xffff:04x}",
+            "content": [{
+                "type": "tool_use",
+                "name": "Write",
+                "input": {"file_path": f"/workspace/work/{name}"},
+            }],
+            "usage": {},
+        },
+    }
+
+
+async def test_kill_on_solver_variant_proliferation(tmp_path: Path):
+    jsonl = tmp_path / "claude.stdout.jsonl"
+    jsonl.write_text("")
+    (tmp_path / "work").mkdir()
+    wd = Watchdog(
+        container_name="fake",
+        jsonl_path=jsonl,
+        work_dir=tmp_path / "work",
+        config=_cfg(max_solver_variants=5),
+        mem_sampler=lambda _: 0.0,
+    )
+    task = asyncio.create_task(wd.run())
+    await _write_jsonl(jsonl, [
+        _write_event("solve1.py"), _write_event("solve2.py"),
+        _write_event("solve3.py"), _write_event("solve4.py"),
+        _write_event("solve5.py"),
+    ])
+    result = await asyncio.wait_for(task, timeout=1.0)
+    assert result.code == "solver_spam"
+    assert "5" in result.detail

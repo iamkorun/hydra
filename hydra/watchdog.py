@@ -14,11 +14,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+_SOLVER_PATTERN = re.compile(r"/workspace/work/(solve|probe|exploit)\d+\.py$")
 
 
 @dataclass(frozen=True)
@@ -133,6 +136,11 @@ class Watchdog:
                 reason = self._check_bash_repeat(cmd)
                 if reason:
                     return reason
+            if block.get("name") == "Write":
+                path = (block.get("input") or {}).get("file_path", "")
+                reason = self._check_solver_spam(path)
+                if reason:
+                    return reason
         return None
 
     def _check_bash_repeat(self, command: str) -> KillReason | None:
@@ -142,6 +150,17 @@ class Watchdog:
             return KillReason(
                 code="bash_repeat",
                 detail=f"same Bash {self.cfg.max_same_bash_repeats}x: {prefix!r}",
+            )
+        return None
+
+    def _check_solver_spam(self, file_path: str) -> KillReason | None:
+        if not _SOLVER_PATTERN.search(file_path):
+            return None
+        self._state.solver_variants.add(file_path)
+        if len(self._state.solver_variants) >= self.cfg.max_solver_variants:
+            return KillReason(
+                code="solver_spam",
+                detail=f"{len(self._state.solver_variants)} solver variants written",
             )
         return None
 
