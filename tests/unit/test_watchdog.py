@@ -250,3 +250,52 @@ async def test_kill_on_idle_work(tmp_path: Path, monkeypatch):
 
     result = await asyncio.wait_for(task, timeout=1.0)
     assert result.code == "idle_work"
+
+
+def test_docker_mem_sampler_parses_percent(monkeypatch):
+    """Happy path: `docker stats` prints '12.34%\n'; sampler returns 12.34."""
+    from hydra.watchdog import docker_mem_sampler
+
+    class _Out:
+        returncode = 0
+        stdout = "12.34%\n"
+
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: _Out())
+    assert docker_mem_sampler()("hydra-chal-deadbeef") == 12.34
+
+
+def test_docker_mem_sampler_returns_none_on_missing_container(monkeypatch):
+    """Container gone → non-zero rc. Returns None (not 0.0) so the
+    watchdog does not mistake 'unavailable' for 'no pressure'."""
+    from hydra.watchdog import docker_mem_sampler
+
+    class _Out:
+        returncode = 1
+        stdout = ""
+
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: _Out())
+    assert docker_mem_sampler()("hydra-gone") is None
+
+
+def test_docker_mem_sampler_returns_none_on_timeout(monkeypatch):
+    """docker daemon hang → subprocess timeout → None."""
+    import subprocess as _sp
+    from hydra.watchdog import docker_mem_sampler
+
+    def _boom(*a, **kw):
+        raise _sp.TimeoutExpired(cmd="docker", timeout=5)
+
+    monkeypatch.setattr("subprocess.run", _boom)
+    assert docker_mem_sampler()("hydra-slow") is None
+
+
+def test_docker_mem_sampler_returns_none_on_unparseable(monkeypatch):
+    """Some stats output forms (e.g. '--') aren't floats. Return None."""
+    from hydra.watchdog import docker_mem_sampler
+
+    class _Out:
+        returncode = 0
+        stdout = "--\n"
+
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: _Out())
+    assert docker_mem_sampler()("hydra-new") is None
