@@ -14,11 +14,53 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+_SOLVER_PATTERN = re.compile(r"/workspace/work/(solve|probe|exploit)\d+\.py$")
+
+
+def _monotonic() -> float:
+    """Monotonic clock wrapper — tests patch this, NOT ``time.monotonic``
+    directly, because patching ``time.monotonic`` globally breaks the
+    asyncio event loop's own scheduling."""
+    return time.monotonic()
+
+
+def _wall_time() -> float:
+    """Wall-clock wrapper — tests patch this, NOT ``time.time`` directly,
+    because patching ``time.time`` globally can cascade into logging,
+    subprocess, etc."""
+    return time.time()
+
+# USD per million tokens. (input, output, cache_creation). cache_read is
+# 10% of input. Fallback is opus (expensive side) so unknown models
+# don't under-count.
+_MODEL_RATES_USD_PER_MTOK: dict[str, tuple[float, float, float]] = {
+    "claude-opus-4-7":            (15.0, 75.0, 18.75),
+    "claude-opus-4-6":            (15.0, 75.0, 18.75),
+    "claude-sonnet-4-6":          (3.0,  15.0, 3.75),
+    "claude-haiku-4-5-20251001":  (1.0,  5.0,  1.25),
+}
+_DEFAULT_RATES = _MODEL_RATES_USD_PER_MTOK["claude-opus-4-7"]
+
+
+def _cost_for(model: str, usage: dict) -> float:
+    rates = _MODEL_RATES_USD_PER_MTOK.get(model, _DEFAULT_RATES)
+    in_rate, out_rate, cache_rate = rates
+    cache_read_rate = in_rate * 0.1
+    it = int(usage.get("input_tokens") or 0)
+    ot = int(usage.get("output_tokens") or 0)
+    cc = int(usage.get("cache_creation_input_tokens") or 0)
+    cr = int(usage.get("cache_read_input_tokens") or 0)
+    return (
+        it * in_rate + ot * out_rate
+        + cc * cache_rate + cr * cache_read_rate
+    ) / 1_000_000
 
 
 @dataclass(frozen=True)
@@ -94,18 +136,29 @@ class Watchdog:
 
     async def _tail_loop(self) -> KillReason:
         """Poll-tail the jsonl file and dispatch parsed events to
-        event-based evaluators. Returns on the first kill signal."""
+        event-based evaluators. Returns on the first kill signal.
+
+        Uses seek/read on a persistent file handle (opened lazily) so
+        only fresh bytes are pulled per tick — the transcript can be
+        tens of MB in a long run, and `read_text()`-slicing on every
+        tick is O(n*ticks).
+        """
         pos = 0
+        carry = b""
         while True:
             try:
-                data = self.jsonl_path.read_text()
+                with self.jsonl_path.open("rb") as f:
+                    f.seek(pos)
+                    chunk = f.read()
+                    pos = f.tell()
             except (FileNotFoundError, OSError):
-                data = ""
-            if len(data) > pos:
-                fresh = data[pos:]
-                pos = len(data)
-                for line in fresh.splitlines():
-                    line = line.strip()
+                chunk = b""
+            if chunk:
+                data = carry + chunk
+                lines = data.split(b"\n")
+                carry = lines.pop()  # last element is partial (or empty)
+                for raw in lines:
+                    line = raw.strip()
                     if not line:
                         continue
                     try:
@@ -124,7 +177,7 @@ class Watchdog:
         for block in msg.get("content") or []:
             if block.get("type") != "tool_use":
                 continue
-            now = time.monotonic()
+            now = _monotonic()
             if self._state.first_tool_use_ts == 0.0:
                 self._state.first_tool_use_ts = now
             self._state.last_tool_use_ts = now
@@ -133,6 +186,26 @@ class Watchdog:
                 reason = self._check_bash_repeat(cmd)
                 if reason:
                     return reason
+            if block.get("name") == "Write":
+                path = (block.get("input") or {}).get("file_path", "")
+                reason = self._check_solver_spam(path)
+                if reason:
+                    return reason
+        usage = msg.get("usage")
+        mid = msg.get("id")
+        if isinstance(usage, dict) and mid:
+            # Streaming deltas for the same message id should overwrite,
+            # not accumulate (same rule usage.py uses for per-message).
+            self._msg_cost[mid] = _cost_for(self.model_name, usage)
+            self._state.cost_usd = sum(self._msg_cost.values())
+            if self._state.cost_usd >= self.cfg.cost_cap_usd:
+                return KillReason(
+                    code="cost_cap",
+                    detail=(
+                        f"${self._state.cost_usd:.2f} "
+                        f">= ${self.cfg.cost_cap_usd:.2f}"
+                    ),
+                )
         return None
 
     def _check_bash_repeat(self, command: str) -> KillReason | None:
@@ -145,6 +218,82 @@ class Watchdog:
             )
         return None
 
+    def _check_solver_spam(self, file_path: str) -> KillReason | None:
+        if not _SOLVER_PATTERN.search(file_path):
+            return None
+        self._state.solver_variants.add(file_path)
+        if len(self._state.solver_variants) >= self.cfg.max_solver_variants:
+            return KillReason(
+                code="solver_spam",
+                detail=f"{len(self._state.solver_variants)} solver variants written",
+            )
+        return None
+
     async def _poll_loop(self) -> KillReason:
         while True:
             await asyncio.sleep(self.cfg.poll_interval_s)
+            try:
+                pct = self.mem_sampler(self.container_name)
+            except Exception:
+                pct = None
+            if pct is not None and pct >= self.cfg.mem_kill_pct:
+                return KillReason(
+                    code="oom_preempt",
+                    detail=f"RSS {pct:.1f}% >= {self.cfg.mem_kill_pct:.1f}%",
+                )
+            reason = self._check_idle_work()
+            if reason:
+                return reason
+
+    def _check_idle_work(self) -> KillReason | None:
+        if self._state.last_tool_use_ts == 0.0:
+            return None
+        mono_now = _monotonic()
+        wall_now = _wall_time()
+        try:
+            mtime = self.work_dir.stat().st_mtime
+        except FileNotFoundError:
+            return None
+        age = wall_now - mtime
+        since_tool = mono_now - self._state.last_tool_use_ts
+        if (
+            age > self.cfg.idle_work_timeout_s
+            and since_tool < self.cfg.poll_interval_s * 2
+        ):
+            return KillReason(
+                code="idle_work",
+                detail=(
+                    f"work/ unchanged {int(age)}s "
+                    f"while agent still active"
+                ),
+            )
+        return None
+
+
+def docker_mem_sampler(
+    engine: str = "docker",
+) -> Callable[[str], float | None]:
+    """Return a blocking callable that runs `docker stats --no-stream`
+    and parses the MemPerc column. Returns None when the container is
+    gone or stats fails — don't treat 'unavailable' as pressure.
+    """
+    import subprocess
+
+    def sample(container_name: str) -> float | None:
+        try:
+            out = subprocess.run(
+                [engine, "stats", "--no-stream",
+                 "--format", "{{.MemPerc}}", container_name],
+                capture_output=True, text=True, timeout=5,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return None
+        if out.returncode != 0:
+            return None
+        s = (out.stdout or "").strip().rstrip("%")
+        try:
+            return float(s)
+        except ValueError:
+            return None
+
+    return sample
