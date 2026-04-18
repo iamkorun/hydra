@@ -174,6 +174,31 @@ Why it matters: without this, a specialist can score on a canonical challenge by
 recalling the answer instead of exploiting it, and collapse on any variant. The
 log turns silent shortcuts into an auditable signal.
 
+## Safety rails
+
+Hydra ships two deterministic supervision layers. Both run per-worker,
+use zero tokens, and can be tuned via CLI flags.
+
+<!-- Watchdog subsection added in a later wave -->
+
+### Flag gate (pre-commit)
+
+Every flag candidate runs through `hydra/flag_gate.py` before being
+written to `flags.json`:
+
+- REJECT: unclosed brace, wrong prefix, format mismatch, length bounds,
+  control chars, whitespace. `flags.json` stays clean; status = `failed`.
+- WARN: missing scratch artifacts, or `prior-knowledge.log` present.
+  Status = `solved_uncertain`; flag is recorded but flagged for human
+  verification.
+- ACCEPT: normal.
+
+Tighten the gate per-challenge in your JSON:
+```
+{"name": "splash", "flag_prefix": "WANLAI",
+ "expected_format": "WANLAI\\{[0-9a-f]{32}\\}"}
+```
+
 ## Development
 
 ```bash
