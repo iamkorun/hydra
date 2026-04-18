@@ -139,3 +139,42 @@ async def test_kill_on_solver_variant_proliferation(tmp_path: Path):
     result = await asyncio.wait_for(task, timeout=1.0)
     assert result.code == "solver_spam"
     assert "5" in result.detail
+
+
+def _assistant_usage_event(
+    input_tokens: int, output_tokens: int,
+    cache_creation: int = 0, cache_read: int = 0,
+) -> dict:
+    import uuid
+    return {
+        "type": "assistant",
+        "message": {
+            "id": f"msg_{uuid.uuid4().hex[:16]}",
+            "content": [],
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_creation_input_tokens": cache_creation,
+                "cache_read_input_tokens": cache_read,
+            },
+        },
+    }
+
+
+async def test_kill_on_cost_cap(tmp_path: Path):
+    jsonl = tmp_path / "claude.stdout.jsonl"
+    jsonl.write_text("")
+    (tmp_path / "work").mkdir()
+    wd = Watchdog(
+        container_name="fake",
+        jsonl_path=jsonl,
+        work_dir=tmp_path / "work",
+        config=_cfg(cost_cap_usd=0.01),
+        mem_sampler=lambda _: 0.0,
+        model_name="claude-opus-4-7",
+    )
+    task = asyncio.create_task(wd.run())
+    # 10_000 output tokens * $75/M = $0.75 — well over $0.01 cap.
+    await _write_jsonl(jsonl, [_assistant_usage_event(0, 10_000)])
+    result = await asyncio.wait_for(task, timeout=1.0)
+    assert result.code == "cost_cap"

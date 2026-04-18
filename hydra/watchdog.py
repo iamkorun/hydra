@@ -23,6 +23,31 @@ from pathlib import Path
 
 _SOLVER_PATTERN = re.compile(r"/workspace/work/(solve|probe|exploit)\d+\.py$")
 
+# USD per million tokens. (input, output, cache_creation). cache_read is
+# 10% of input. Fallback is opus (expensive side) so unknown models
+# don't under-count.
+_MODEL_RATES_USD_PER_MTOK: dict[str, tuple[float, float, float]] = {
+    "claude-opus-4-7":            (15.0, 75.0, 18.75),
+    "claude-opus-4-6":            (15.0, 75.0, 18.75),
+    "claude-sonnet-4-6":          (3.0,  15.0, 3.75),
+    "claude-haiku-4-5-20251001":  (1.0,  5.0,  1.25),
+}
+_DEFAULT_RATES = _MODEL_RATES_USD_PER_MTOK["claude-opus-4-7"]
+
+
+def _cost_for(model: str, usage: dict) -> float:
+    rates = _MODEL_RATES_USD_PER_MTOK.get(model, _DEFAULT_RATES)
+    in_rate, out_rate, cache_rate = rates
+    cache_read_rate = in_rate * 0.1
+    it = int(usage.get("input_tokens") or 0)
+    ot = int(usage.get("output_tokens") or 0)
+    cc = int(usage.get("cache_creation_input_tokens") or 0)
+    cr = int(usage.get("cache_read_input_tokens") or 0)
+    return (
+        it * in_rate + ot * out_rate
+        + cc * cache_rate + cr * cache_read_rate
+    ) / 1_000_000
+
 
 @dataclass(frozen=True)
 class KillReason:
@@ -97,18 +122,29 @@ class Watchdog:
 
     async def _tail_loop(self) -> KillReason:
         """Poll-tail the jsonl file and dispatch parsed events to
-        event-based evaluators. Returns on the first kill signal."""
+        event-based evaluators. Returns on the first kill signal.
+
+        Uses seek/read on a persistent file handle (opened lazily) so
+        only fresh bytes are pulled per tick — the transcript can be
+        tens of MB in a long run, and `read_text()`-slicing on every
+        tick is O(n*ticks).
+        """
         pos = 0
+        carry = b""
         while True:
             try:
-                data = self.jsonl_path.read_text()
+                with self.jsonl_path.open("rb") as f:
+                    f.seek(pos)
+                    chunk = f.read()
+                    pos = f.tell()
             except (FileNotFoundError, OSError):
-                data = ""
-            if len(data) > pos:
-                fresh = data[pos:]
-                pos = len(data)
-                for line in fresh.splitlines():
-                    line = line.strip()
+                chunk = b""
+            if chunk:
+                data = carry + chunk
+                lines = data.split(b"\n")
+                carry = lines.pop()  # last element is partial (or empty)
+                for raw in lines:
+                    line = raw.strip()
                     if not line:
                         continue
                     try:
@@ -141,6 +177,21 @@ class Watchdog:
                 reason = self._check_solver_spam(path)
                 if reason:
                     return reason
+        usage = msg.get("usage")
+        mid = msg.get("id")
+        if isinstance(usage, dict) and mid:
+            # Streaming deltas for the same message id should overwrite,
+            # not accumulate (same rule usage.py uses for per-message).
+            self._msg_cost[mid] = _cost_for(self.model_name, usage)
+            self._state.cost_usd = sum(self._msg_cost.values())
+            if self._state.cost_usd >= self.cfg.cost_cap_usd:
+                return KillReason(
+                    code="cost_cap",
+                    detail=(
+                        f"${self._state.cost_usd:.2f} "
+                        f">= ${self.cfg.cost_cap_usd:.2f}"
+                    ),
+                )
         return None
 
     def _check_bash_repeat(self, command: str) -> KillReason | None:
