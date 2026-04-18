@@ -61,6 +61,7 @@ async def run_worker(
     engine: str = DEFAULT_ENGINE,
     max_stdout_buffer: int = _DEFAULT_STDOUT_BUFFER,
     max_stderr_buffer: int = _DEFAULT_STDERR_BUFFER,
+    container_name: str | None = None,
 ) -> WorkerResult:
     """Run one `claude -p` CTF-solve in a Docker container.
 
@@ -72,6 +73,10 @@ async def run_worker(
 
     credentials_dir is preferred when both are supplied.
 
+    container_name: override the auto-generated `hydra-<safe>-<uuid>`
+        name. Orchestrator uses this so the sidecar Watchdog can target
+        the exact same container for `docker stats` / `docker stop`.
+
     Output is streamed to workdir/logs/ as the container writes it (so
     `tail -f` works during a live run) and only a bounded tail is kept
     in memory for flag extraction — caps peak RAM no matter how chatty
@@ -82,7 +87,7 @@ async def run_worker(
             "run_worker requires either credentials_dir (preferred) or api_key"
         )
 
-    container_name = f"hydra-{_docker_safe_name(name)}-{uuid.uuid4().hex[:8]}"
+    container_name = container_name or f"hydra-{_docker_safe_name(name)}-{uuid.uuid4().hex[:8]}"
 
     cmd = [
         engine, "run", "--rm",
