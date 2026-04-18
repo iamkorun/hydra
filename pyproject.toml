@@ -29,6 +29,10 @@ testpaths = ["tests/unit", "tests/integration"]
 
 [tool.ruff]
 line-length = 100
+# `.claude/worktrees/` holds locked temporary worktrees created by the
+# Claude Code agent harness. Walking them doubles-up ruff findings on
+# stale copies of our own code; exclude.
+extend-exclude = [".claude/worktrees"]
 
 [tool.ruff.lint]
 # Default rules (E, F) plus B (bugbear: catches common real bugs) and

@@ -5,7 +5,7 @@ module is what the orchestrator calls when it wants to route candidates
 to the verifier-specialist: WARN = send to verifier, REJECT = drop.
 """
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 import re
 
 _FLAG_RE = re.compile(r"^([A-Za-z0-9_]+)\{([^}]+)\}$")
@@ -28,7 +28,7 @@ _PLACEHOLDER_BODIES = frozenset({
 })
 
 
-class Verdict(str, Enum):
+class Verdict(StrEnum):
     ACCEPT = "accept"   # submit as-is
     WARN = "warn"       # route to verifier-specialist; could be a decoy
     REJECT = "reject"   # definitely not a flag, drop

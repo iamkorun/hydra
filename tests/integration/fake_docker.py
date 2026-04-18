@@ -68,12 +68,18 @@ def main():
     if matched.get("sleep_s"):
         time.sleep(matched["sleep_s"])
 
-    # Write flag.txt inside the mounted workdir if requested
-    if "flag_file" in matched:
-        for src, dst in mounts:
-            if dst == "/workspace":
+    # Write flag.txt inside the mounted workdir if requested, and drop a
+    # scratch artifact so the flag_gate's `no_scratch` WARN doesn't fire
+    # on a simulated solve. Real agents touch /workspace/work/ to derive;
+    # this sentinel models that minimally.
+    for src, dst in mounts:
+        if dst == "/workspace":
+            work = Path(src) / "work"
+            work.mkdir(parents=True, exist_ok=True)
+            (work / "fake-scratch").write_text("simulated derivation\n")
+            if "flag_file" in matched:
                 (Path(src) / "flag.txt").write_text(matched["flag_file"])
-                break
+            break
 
     sys.stdout.write(matched.get("stdout", ""))
     sys.stderr.write(matched.get("stderr", ""))
