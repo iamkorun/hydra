@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import subprocess
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -277,7 +278,6 @@ def docker_mem_sampler(
     and parses the MemPerc column. Returns None when the container is
     gone or stats fails — don't treat 'unavailable' as pressure.
     """
-    import subprocess
 
     def sample(container_name: str) -> float | None:
         try:
