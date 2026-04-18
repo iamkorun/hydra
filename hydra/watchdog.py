@@ -218,3 +218,41 @@ class Watchdog:
     async def _poll_loop(self) -> KillReason:
         while True:
             await asyncio.sleep(self.cfg.poll_interval_s)
+            try:
+                pct = self.mem_sampler(self.container_name)
+            except Exception:
+                pct = None
+            if pct is not None and pct >= self.cfg.mem_kill_pct:
+                return KillReason(
+                    code="oom_preempt",
+                    detail=f"RSS {pct:.1f}% >= {self.cfg.mem_kill_pct:.1f}%",
+                )
+
+
+def docker_mem_sampler(
+    engine: str = "docker",
+) -> Callable[[str], float | None]:
+    """Return a blocking callable that runs `docker stats --no-stream`
+    and parses the MemPerc column. Returns None when the container is
+    gone or stats fails — don't treat 'unavailable' as pressure.
+    """
+    import subprocess
+
+    def sample(container_name: str) -> float | None:
+        try:
+            out = subprocess.run(
+                [engine, "stats", "--no-stream",
+                 "--format", "{{.MemPerc}}", container_name],
+                capture_output=True, text=True, timeout=5,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return None
+        if out.returncode != 0:
+            return None
+        s = (out.stdout or "").strip().rstrip("%")
+        try:
+            return float(s)
+        except ValueError:
+            return None
+
+    return sample

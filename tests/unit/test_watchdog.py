@@ -178,3 +178,39 @@ async def test_kill_on_cost_cap(tmp_path: Path):
     await _write_jsonl(jsonl, [_assistant_usage_event(0, 10_000)])
     result = await asyncio.wait_for(task, timeout=1.0)
     assert result.code == "cost_cap"
+
+
+async def test_kill_on_memory_pressure(tmp_path: Path):
+    jsonl = tmp_path / "claude.stdout.jsonl"
+    jsonl.write_text("")
+    (tmp_path / "work").mkdir()
+    wd = Watchdog(
+        container_name="fake",
+        jsonl_path=jsonl,
+        work_dir=tmp_path / "work",
+        config=_cfg(mem_kill_pct=90.0, poll_interval_s=0.01),
+        mem_sampler=lambda _: 95.0,
+    )
+    task = asyncio.create_task(wd.run())
+    result = await asyncio.wait_for(task, timeout=1.0)
+    assert result.code == "oom_preempt"
+    assert "95" in result.detail
+
+
+async def test_mem_sampler_returning_none_is_ignored(tmp_path: Path):
+    jsonl = tmp_path / "claude.stdout.jsonl"
+    jsonl.write_text("")
+    (tmp_path / "work").mkdir()
+    wd = Watchdog(
+        container_name="fake",
+        jsonl_path=jsonl,
+        work_dir=tmp_path / "work",
+        config=_cfg(mem_kill_pct=90.0, poll_interval_s=0.01),
+        mem_sampler=lambda _: None,
+    )
+    task = asyncio.create_task(wd.run())
+    await asyncio.sleep(0.1)
+    assert not task.done()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
