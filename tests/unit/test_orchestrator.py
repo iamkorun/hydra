@@ -11,6 +11,12 @@ class FakeWriter:
     def finalize(self, *, run_id): self.finalized = True
 
 async def fake_worker_solved(*args, **kwargs) -> WorkerResult:
+    # Drop a scratch file so the flag_gate's no_scratch WARN rule doesn't
+    # fire and demote these "solved" cases to "solved_uncertain".
+    wd = kwargs.get("workdir")
+    if wd is not None:
+        (wd / "work").mkdir(parents=True, exist_ok=True)
+        (wd / "work" / "derivation.txt").write_text("solver steps\n")
     return WorkerResult(
         name=kwargs["name"], exit_code=0,
         stdout=f"FLAG: flag{{{kwargs['name']}}}\n",
@@ -139,6 +145,9 @@ async def test_usage_is_parsed_from_transcript_into_result(tmp_path, monkeypatch
                           "cache_creation_input_tokens": 50000},
             }) + "\n"
         )
+        # Populate scratch so flag_gate accepts (no_scratch WARN rule).
+        (wd / "work").mkdir(parents=True, exist_ok=True)
+        (wd / "work" / "derivation.txt").write_text("solver steps\n")
         return WorkerResult(
             name=kwargs["name"], exit_code=0,
             stdout=f"FLAG: flag{{{kwargs['name']}}}\n", stderr="",
@@ -197,7 +206,11 @@ async def test_passk_first_flag_wins(tmp_path, monkeypatch):
             if my_idx == 0:
                 await asyncio.sleep(0.01)  # fastest → winner
                 # Write flag to the real workdir so extract_flag can find it.
-                (kwargs["workdir"] / "flag.txt").write_text(f"flag{{win-{my_idx}}}\n")
+                wd = kwargs["workdir"]
+                (wd / "flag.txt").write_text(f"flag{{win-{my_idx}}}\n")
+                # Populate scratch so flag_gate doesn't WARN on empty work/.
+                (wd / "work").mkdir(parents=True, exist_ok=True)
+                (wd / "work" / "derivation.txt").write_text("solver steps\n")
                 return WorkerResult(
                     name=kwargs["name"], exit_code=0,
                     stdout=f"FLAG: flag{{win-{my_idx}}}\n",
@@ -243,6 +256,10 @@ async def test_passk_winner_with_stdout_only_flag(tmp_path, monkeypatch):
         order["idx"] += 1
         if my_idx == 0:
             # Winner: leave flag.txt untouched (empty), flag only in stdout.
+            wd = kwargs["workdir"]
+            # Populate scratch so flag_gate doesn't WARN on empty work/.
+            (wd / "work").mkdir(parents=True, exist_ok=True)
+            (wd / "work" / "derivation.txt").write_text("solver steps\n")
             return WorkerResult(
                 name=kwargs["name"], exit_code=0,
                 stdout=f"FLAG: flag{{stdout-only-{my_idx}}}\n",
@@ -307,6 +324,10 @@ async def test_one_exception_does_not_cancel_siblings(tmp_path, monkeypatch):
     async def worker(*args, **kwargs):
         if kwargs["name"] == "boom":
             raise RuntimeError("simulated docker spawn failure")
+        # Populate scratch so flag_gate doesn't WARN on empty work/.
+        wd = kwargs["workdir"]
+        (wd / "work").mkdir(parents=True, exist_ok=True)
+        (wd / "work" / "derivation.txt").write_text("solver steps\n")
         return WorkerResult(
             name=kwargs["name"], exit_code=0,
             stdout=f"FLAG: flag{{{kwargs['name']}}}\n",
@@ -393,6 +414,79 @@ def test_exit_137_with_flag_is_solved_uncertain(tmp_path, monkeypatch):
     r = orch._results[0]
     assert r.status == "solved_uncertain", f"expected solved_uncertain, got {r.status}"
     assert "OOM" in (r.reason or "") or "137" in (r.reason or "")
+
+
+async def test_gate_rejects_unclosed_flag_keeps_it_out_of_flags_json(
+    tmp_path, monkeypatch
+):
+    """A flag whose prefix doesn't match the challenge's declared
+    flag_prefix must be vetoed by the gate: status becomes 'failed' and
+    no flag lands in flags.json (so --retry-failed can re-pick it).
+
+    Note: the plan's original scenario (unclosed-brace flag.txt from the
+    OT splash-array bug) is already caught upstream by
+    flag_extractor.extract_flag, so it can't exercise the gate at the
+    orchestrator integration level — it's covered unit-side in
+    tests/unit/test_flag_gate.py::test_reject_unclosed_brace. We
+    substitute prefix-mismatch here because that rule is unique to the
+    gate (extract_flag doesn't know challenge.flag_prefix)."""
+    async def worker_wrong_prefix(*args, **kwargs):
+        wd = kwargs["workdir"]
+        wd.mkdir(parents=True, exist_ok=True)
+        (wd / "flag.txt").write_text("flag{got_this_one}\n")
+        (wd / "work").mkdir(parents=True, exist_ok=True)
+        (wd / "work" / "derivation.txt").write_text("solver steps\n")
+        return WorkerResult(
+            name=kwargs["name"], exit_code=0,
+            stdout="done", stderr="", timed_out=False, duration_s=0.1,
+        )
+
+    monkeypatch.setattr("hydra.orchestrator.run_worker", worker_wrong_prefix)
+    writer = FakeWriter()
+    cfg = OrchestratorConfig(
+        parallel=1, timeout_s=30, model="m",
+        image="hydra-worker", api_key="sk",
+        runs_dir=tmp_path / "runs",
+        failures_dir=tmp_path / "failures",
+        prompt_volumes={},
+    )
+    orch = Orchestrator(cfg, writer=writer)
+    await orch.run([Challenge(name="a", description="x", flag_prefix="WANLAI")])
+    [r] = writer.appended
+    assert r.status == "failed"
+    assert r.flag is None
+    assert "prefix" in (r.reason or "").lower()
+
+
+async def test_gate_warn_demotes_to_solved_uncertain(tmp_path, monkeypatch):
+    """A flag produced with no /workspace/work scratch artifacts is
+    derivation-suspect; gate WARN must demote to solved_uncertain while
+    still recording the flag (user can verify)."""
+    async def worker_no_scratch(*args, **kwargs):
+        wd = kwargs["workdir"]
+        wd.mkdir(parents=True, exist_ok=True)
+        (wd / "flag.txt").write_text("HTB{some_body_here}\n")
+        # deliberately no work/ dir
+        return WorkerResult(
+            name=kwargs["name"], exit_code=0,
+            stdout="done", stderr="", timed_out=False, duration_s=0.1,
+        )
+
+    monkeypatch.setattr("hydra.orchestrator.run_worker", worker_no_scratch)
+    writer = FakeWriter()
+    cfg = OrchestratorConfig(
+        parallel=1, timeout_s=30, model="m",
+        image="hydra-worker", api_key="sk",
+        runs_dir=tmp_path / "runs",
+        failures_dir=tmp_path / "failures",
+        prompt_volumes={},
+    )
+    orch = Orchestrator(cfg, writer=writer)
+    await orch.run([Challenge(name="a", description="x", flag_prefix="HTB")])
+    [r] = writer.appended
+    assert r.status == "solved_uncertain"
+    assert r.flag == "HTB{some_body_here}"
+    assert "no_scratch" in (r.reason or "")
 
 
 async def test_skip_already_solved(tmp_path, monkeypatch):

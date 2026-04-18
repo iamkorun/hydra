@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from hydra.models import Challenge
@@ -19,7 +19,7 @@ _MIN_BODY_LEN = 1
 _STRUCT_RE = re.compile(r"^([A-Za-z0-9_]+)\{([^}]+)\}$")
 
 
-class Verdict(str, Enum):
+class Verdict(StrEnum):
     ACCEPT = "accept"
     WARN = "warn"
     REJECT = "reject"
