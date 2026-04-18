@@ -62,6 +62,7 @@ Budget at most two re-dispatches before writing a postmortem.
 - Do not invent or hallucinate flags. If you can't recover one, say so.
 - Do not spend more than your container's wall-clock budget. If stdout has been idle for 5 minutes with no new tool calls, stop.
 - Do not connect to services that aren't explicitly mentioned in `README.md` or `hints.md`.
+- **Flag candidates are gated.** A broken flag (unclosed brace, wrong prefix, missing scratch) won't reach `flags.json`. Write `./flag.txt` only when you've derived the complete flag. Partial progress belongs in `./work/`, not `./flag.txt`.
 
 ## Meta skills (consult when the work calls for them)
 
