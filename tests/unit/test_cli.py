@@ -306,9 +306,19 @@ def test_resolve_config_plumbs_watchdog_to_config(tmp_path, monkeypatch):
         "--watchdog-idle-work-timeout", "300",
     ])
     cfg = resolve_config(ns, root=tmp_path)
-    assert cfg.watchdog_enabled is True
-    assert cfg.watchdog_cost_cap_usd == 2.0
-    assert cfg.watchdog_mem_kill_pct == 80.5
-    assert cfg.watchdog_max_same_bash_repeats == 5
-    assert cfg.watchdog_max_solver_variants == 8
-    assert cfg.watchdog_idle_work_timeout_s == 300.0
+    assert cfg.watchdog is not None
+    assert cfg.watchdog.cost_cap_usd == 2.0
+    assert cfg.watchdog.mem_kill_pct == 80.5
+    assert cfg.watchdog.max_same_bash_repeats == 5
+    assert cfg.watchdog.max_solver_variants == 8
+    assert cfg.watchdog.idle_work_timeout_s == 300.0
+
+
+def test_resolve_config_no_watchdog_is_none(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-fake")
+    from hydra.cli import build_parser, resolve_config
+    ns = build_parser().parse_args([
+        "chal.json", "--use-api-key", "--no-watchdog",
+    ])
+    cfg = resolve_config(ns, root=tmp_path)
+    assert cfg.watchdog is None

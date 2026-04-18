@@ -34,14 +34,15 @@ class OrchestratorConfig:
     container_memory: str = "8g"
     skip_names: set[str] = field(default_factory=set)
     attempts: int = 1  # pass@k: N parallel attempts per challenge, first flag wins
-    # Watchdog tunables. `watchdog_enabled=False` skips construction
-    # entirely (used by tests that don't need it and by `--no-watchdog`).
-    watchdog_enabled: bool = True
-    watchdog_cost_cap_usd: float = 10.0
-    watchdog_mem_kill_pct: float = 90.0
-    watchdog_max_same_bash_repeats: int = 3
-    watchdog_max_solver_variants: int = 5
-    watchdog_idle_work_timeout_s: float = 180.0
+    # Sidecar watchdog config. `None` disables the watchdog entirely
+    # (tests and `--no-watchdog` use this path).
+    watchdog: WatchdogConfig | None = field(default_factory=lambda: WatchdogConfig(
+        cost_cap_usd=10.0,
+        mem_kill_pct=90.0,
+        max_same_bash_repeats=3,
+        max_solver_variants=5,
+        idle_work_timeout_s=180.0,
+    ))
 
 class Orchestrator:
     def __init__(
@@ -223,7 +224,7 @@ class Orchestrator:
             prompt_volumes=self.cfg.prompt_volumes,
             container_name=container_name,
         ))
-        if not self.cfg.watchdog_enabled:
+        if self.cfg.watchdog is None:
             try:
                 wr = await worker_task
             except asyncio.CancelledError:
@@ -237,13 +238,7 @@ class Orchestrator:
             container_name=container_name,
             jsonl_path=jsonl,
             work_dir=wd / "work",
-            config=WatchdogConfig(
-                cost_cap_usd=self.cfg.watchdog_cost_cap_usd,
-                mem_kill_pct=self.cfg.watchdog_mem_kill_pct,
-                max_same_bash_repeats=self.cfg.watchdog_max_same_bash_repeats,
-                max_solver_variants=self.cfg.watchdog_max_solver_variants,
-                idle_work_timeout_s=self.cfg.watchdog_idle_work_timeout_s,
-            ),
+            config=self.cfg.watchdog,
             mem_sampler=docker_mem_sampler(),
             model_name=self.cfg.model,
         )

@@ -12,6 +12,7 @@ from hydra.heartbeat import Heartbeat, fmt_duration
 from hydra.normalize import normalize_challenges, NormalizationError, safe_name
 from hydra.orchestrator import Orchestrator, OrchestratorConfig
 from hydra.results import ResultsWriter, load_jsonl_names
+from hydra.watchdog import WatchdogConfig
 
 DEFAULT_MODEL = "claude-opus-4-7"
 DEFAULT_CREDENTIALS_DIR = Path.home() / ".claude"
@@ -35,12 +36,7 @@ class ResolvedConfig:
     api_key: str | None = None
     image: str = "hydra-worker"
     attempts: int = 1
-    watchdog_enabled: bool = True
-    watchdog_cost_cap_usd: float = 10.0
-    watchdog_mem_kill_pct: float = 90.0
-    watchdog_max_same_bash_repeats: int = 3
-    watchdog_max_solver_variants: int = 5
-    watchdog_idle_work_timeout_s: float = 180.0
+    watchdog: WatchdogConfig | None = None
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -132,12 +128,13 @@ def resolve_config(ns: argparse.Namespace, *, root: Path) -> ResolvedConfig:
         dry_run=ns.dry_run,
         rebuild_image=ns.rebuild_image,
         attempts=ns.attempts,
-        watchdog_enabled=not ns.no_watchdog,
-        watchdog_cost_cap_usd=ns.watchdog_cost_cap,
-        watchdog_mem_kill_pct=ns.watchdog_mem_kill_pct,
-        watchdog_max_same_bash_repeats=ns.watchdog_max_bash_repeats,
-        watchdog_max_solver_variants=ns.watchdog_max_solver_variants,
-        watchdog_idle_work_timeout_s=ns.watchdog_idle_work_timeout,
+        watchdog=None if ns.no_watchdog else WatchdogConfig(
+            cost_cap_usd=ns.watchdog_cost_cap,
+            mem_kill_pct=ns.watchdog_mem_kill_pct,
+            max_same_bash_repeats=ns.watchdog_max_bash_repeats,
+            max_solver_variants=ns.watchdog_max_solver_variants,
+            idle_work_timeout_s=ns.watchdog_idle_work_timeout,
+        ),
     )
 
 def _resolve_auth(ns: argparse.Namespace) -> tuple[Path | None, str | None]:
@@ -290,12 +287,7 @@ async def _run(cfg: ResolvedConfig) -> int:
         prompt_volumes=_prompt_volumes(),
         skip_names=skip,
         attempts=cfg.attempts,
-        watchdog_enabled=cfg.watchdog_enabled,
-        watchdog_cost_cap_usd=cfg.watchdog_cost_cap_usd,
-        watchdog_mem_kill_pct=cfg.watchdog_mem_kill_pct,
-        watchdog_max_same_bash_repeats=cfg.watchdog_max_same_bash_repeats,
-        watchdog_max_solver_variants=cfg.watchdog_max_solver_variants,
-        watchdog_idle_work_timeout_s=cfg.watchdog_idle_work_timeout_s,
+        watchdog=cfg.watchdog,
     )
     run_id = datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
     n_pending = len(challenges) - len(skip & {c.name for c in challenges})
