@@ -551,3 +551,66 @@ async def test_watchdog_kill_overrides_worker_result(tmp_path, monkeypatch):
     assert r.status == "failed"
     assert r.flag is None
     assert "watchdog: bash_repeat" in (r.reason or "")
+
+
+async def test_attempt_shares_container_name_between_worker_and_watchdog(
+    tmp_path, monkeypatch
+):
+    """Regression for a bug where _attempt used `f"hydra-{c.name}"` while
+    run_worker generated `f"hydra-<safe>-<uuid>"`. The Watchdog's
+    mem_sampler and the orchestrator's stop_container both take the
+    prefix-form -> neither would ever match the actual container in prod.
+
+    After the fix, _attempt generates the canonical name ONCE and hands
+    the same string to both run_worker and Watchdog.
+    """
+    from hydra.watchdog import KillReason
+
+    captured_worker: dict = {}
+    captured_wd: list[str] = []
+    captured_stop: list[str] = []
+
+    async def fake_run_worker(**kwargs):
+        captured_worker.update(kwargs)
+        # Simulate a slow worker so the watchdog wins the race.
+        await asyncio.sleep(0.5)
+        return WorkerResult(
+            name=kwargs["name"], exit_code=0,
+            stdout="", stderr="", timed_out=False, duration_s=0.5,
+        )
+
+    class RecordingInstantKillWatchdog:
+        def __init__(self, *, container_name, **kw):
+            captured_wd.append(container_name)
+        async def run(self) -> KillReason:
+            return KillReason(code="bash_repeat", detail="test-triggered")
+
+    async def capturing_stop(engine, name):
+        captured_stop.append(name)
+
+    monkeypatch.setattr("hydra.orchestrator.run_worker", fake_run_worker)
+    monkeypatch.setattr("hydra.orchestrator.Watchdog", RecordingInstantKillWatchdog)
+    monkeypatch.setattr("hydra.orchestrator.stop_container", capturing_stop)
+
+    writer = FakeWriter()
+    cfg = OrchestratorConfig(
+        parallel=1, timeout_s=30, model="m",
+        image="hydra-worker", api_key="sk",
+        runs_dir=tmp_path / "runs",
+        failures_dir=tmp_path / "failures",
+        prompt_volumes={},
+        watchdog_enabled=True,
+    )
+    orch = Orchestrator(cfg, writer=writer)
+    await orch.run([Challenge(name="Chal-1", description="x")])
+
+    # 1. run_worker received a container_name kwarg at all.
+    assert "container_name" in captured_worker
+    shared = captured_worker["container_name"]
+    # 2. Name has the canonical docker-safe shape.
+    assert shared.startswith("hydra-Chal-1-")
+    assert len(shared) > len("hydra-Chal-1-")  # has uuid suffix
+    # 3. Watchdog was given the SAME name.
+    assert captured_wd == [shared]
+    # 4. stop_container was called with the SAME name.
+    assert captured_stop == [shared]

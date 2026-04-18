@@ -1,5 +1,6 @@
 import asyncio
 import traceback
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from pathlib import Path
@@ -7,7 +8,9 @@ from hydra.models import Challenge, Result
 from hydra.workdir import build_workdir
 from hydra.flag_extractor import extract_flag
 from hydra.failures import write_failure_md, write_failures_summary
-from hydra.docker_worker import run_worker, WorkerResult, stop_container
+from hydra.docker_worker import (
+    run_worker, WorkerResult, stop_container, _docker_safe_name,
+)
 from hydra.heartbeat import Heartbeat
 from hydra.usage import parse_usage_dir
 from hydra.remote_contact import was_remote_contacted
@@ -190,9 +193,18 @@ class Orchestrator:
         self, c: Challenge, *, subpath: str | None
     ) -> tuple[Path, WorkerResult, KillReason | None]:
         """Run one solve attempt alongside a Watchdog. Returns
-        (workdir, worker_result, kill_reason_or_None)."""
+        (workdir, worker_result, kill_reason_or_None).
+
+        The container_name is generated HERE (not inside run_worker) so
+        the Watchdog targets the exact same name for `docker stats` and
+        `docker stop`. Before this, _attempt used `f"hydra-{c.name}"` but
+        run_worker generated `f"hydra-<safe>-<uuid>"` — the mismatch made
+        oom_preempt and watchdog-initiated stops dead code in production.
+        """
         wd = build_workdir(c, runs_dir=self.cfg.runs_dir, subpath=subpath)
-        container_name = f"hydra-{c.name}"
+        container_name = (
+            f"hydra-{_docker_safe_name(c.name)}-{uuid.uuid4().hex[:8]}"
+        )
         worker_task = asyncio.create_task(run_worker(
             name=c.name,
             workdir=wd,
@@ -204,6 +216,7 @@ class Orchestrator:
             container_cpus=self.cfg.container_cpus,
             container_memory=self.cfg.container_memory,
             prompt_volumes=self.cfg.prompt_volumes,
+            container_name=container_name,
         ))
         if not self.cfg.watchdog_enabled:
             try:

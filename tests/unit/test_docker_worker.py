@@ -434,3 +434,15 @@ async def test_inner_command_quoting_preserves_special_chars(tmp_path, patch_sub
     assert "`FLAG: <flag>`" in sh_cmd
     # And it lives inside a single-quoted region after the -p flag.
     assert "-p '" in sh_cmd
+
+
+def test_run_worker_signature_accepts_container_name():
+    """Regression: orchestrator must be able to hand run_worker a shared
+    container_name so the sidecar Watchdog targets the real container."""
+    import inspect
+    from hydra.docker_worker import run_worker
+
+    sig = inspect.signature(run_worker)
+    assert "container_name" in sig.parameters
+    # Default must be None so existing callers (and tests) keep working.
+    assert sig.parameters["container_name"].default is None
