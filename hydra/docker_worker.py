@@ -154,14 +154,14 @@ async def run_worker(
         await asyncio.wait_for(proc.wait(), timeout=timeout_s)
     except TimeoutError:
         timed_out = True
-        await _docker_stop(engine, container_name)
+        await stop_container(engine, container_name)
         proc.kill()
         try:
             await asyncio.wait_for(proc.wait(), timeout=15)
         except TimeoutError:
             pass
     except asyncio.CancelledError:
-        await _docker_stop(engine, container_name)
+        await stop_container(engine, container_name)
         proc.kill()
         try:
             await asyncio.wait_for(proc.wait(), timeout=15)
@@ -244,7 +244,7 @@ def _entrypoint_argv(inner_argv: list[str], *, bootstrap_creds: bool) -> list[st
     return ["sh", "-c", f"{bootstrap}exec {inner}"]
 
 
-async def _docker_stop(engine: str, container_name: str) -> None:
+async def stop_container(engine: str, container_name: str) -> None:
     proc = await asyncio.create_subprocess_exec(
         engine, "stop", "--time", "10", container_name,
         stdout=asyncio.subprocess.DEVNULL,
