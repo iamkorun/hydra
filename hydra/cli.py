@@ -97,12 +97,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--watchdog-max-bash-repeats", type=int, default=3, metavar="N",
-        help="Kill when the same Bash command prefix fires N+ times.",
+        help="Kill when the same Bash command prefix fires N or more times (default 3).",
     )
     p.add_argument(
         "--watchdog-max-solver-variants", type=int, default=5, metavar="N",
-        help="Kill when the agent writes more than N files matching "
-             "/workspace/work/{solve,probe,exploit}NNN.py.",
+        help="Kill when the agent writes N or more files matching /workspace/work/{solve,probe,exploit}NNN.py (default 5).",
     )
     p.add_argument(
         "--watchdog-idle-work-timeout", type=float, default=180.0, metavar="S",
