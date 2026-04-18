@@ -14,6 +14,8 @@ _REMOTE_KEYS = ("remote", "host", "url", "service")
 _HINTS_KEYS = ("hints", "hint")
 _CAT_KEYS = ("category", "tag")
 _POINTS_KEYS = ("points", "score", "value")
+_EXPECTED_FORMAT_KEYS = ("expected_format", "flag_format", "format")
+_FLAG_PREFIX_KEYS = ("flag_prefix", "prefix")
 
 def _first(d: dict[str, Any], keys: tuple[str, ...]) -> Any:
     for k in keys:
@@ -58,7 +60,8 @@ def _normalize_one(raw: dict[str, Any], idx: int) -> Challenge:
 
     hints = _as_list(_first(raw, _HINTS_KEYS))
     points = _first(raw, _POINTS_KEYS)
-
+    expected_format = _first(raw, _EXPECTED_FORMAT_KEYS)
+    flag_prefix = _first(raw, _FLAG_PREFIX_KEYS)
     return Challenge(
         # safe_name strips filesystem-hostile chars so the challenge name
         # can be used as a directory (runs/<name>/, failures/<name>.md)
@@ -70,6 +73,8 @@ def _normalize_one(raw: dict[str, Any], idx: int) -> Challenge:
         hints=[str(h) for h in hints],
         category=_first(raw, _CAT_KEYS),
         points=int(points) if points is not None else None,
+        expected_format=str(expected_format) if expected_format is not None else None,
+        flag_prefix=str(flag_prefix) if flag_prefix is not None else None,
     )
 
 def normalize_challenges(raw: Any) -> list[Challenge]:

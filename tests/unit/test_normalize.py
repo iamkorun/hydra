@@ -134,6 +134,28 @@ def test_safe_name_for_workdir():
     assert safe_name("รหัสลับ") == "รหัสลับ"  # unicode OK
 
 
+def test_normalize_passes_expected_format_and_prefix():
+    from hydra.normalize import normalize_challenges
+
+    raw = [{
+        "name": "c",
+        "description": "d",
+        "expected_format": r"HTB\{[^}]+\}",
+        "flag_prefix": "HTB",
+    }]
+    [c] = normalize_challenges(raw)
+    assert c.expected_format == r"HTB\{[^}]+\}"
+    assert c.flag_prefix == "HTB"
+
+
+def test_normalize_omits_fields_when_absent():
+    from hydra.normalize import normalize_challenges
+
+    [c] = normalize_challenges([{"name": "c", "description": "d"}])
+    assert c.expected_format is None
+    assert c.flag_prefix is None
+
+
 def test_normalize_applies_safe_name_to_prevent_path_traversal():
     """Challenge names become directory names (runs/<name>/), so raw input
     must be sanitized at normalization time. Without this, a malicious or

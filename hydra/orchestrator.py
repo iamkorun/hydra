@@ -11,6 +11,7 @@ from hydra.docker_worker import run_worker, WorkerResult
 from hydra.heartbeat import Heartbeat
 from hydra.usage import parse_usage_dir
 from hydra.remote_contact import was_remote_contacted
+from hydra.flag_gate import Verdict as GateVerdictEnum, check as gate_check
 
 @dataclass
 class OrchestratorConfig:
@@ -114,8 +115,12 @@ class Orchestrator:
         if wr.timed_out:
             status, reason = "timeout", f"wall-clock timeout after {self.cfg.timeout_s}s"
         elif flag:
+            gate = gate_check(flag, c, wd)
             log_file = wd / "logs" / "claude.stdout.jsonl"
-            if wr.exit_code == 137:
+            if gate.verdict == GateVerdictEnum.REJECT:
+                flag = None
+                status, reason = "failed", f"flag_gate rejected: {gate.reason}"
+            elif wr.exit_code == 137:
                 status = "solved_uncertain"
                 reason = (
                     "worker exited 137 (SIGKILL / OOM) — flag may be stale, "
@@ -127,6 +132,9 @@ class Orchestrator:
                     f"flag extracted but no evidence agent contacted remote "
                     f"{c.remote} — likely false positive from README/binary string"
                 )
+            elif gate.verdict == GateVerdictEnum.WARN:
+                status = "solved_uncertain"
+                reason = f"flag_gate warn: {gate.reason}"
             else:
                 status, reason = "solved", None
         elif wr.exit_code != 0:
