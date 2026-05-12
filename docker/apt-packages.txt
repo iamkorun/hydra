@@ -28,3 +28,4 @@ ugrep
 pv
 sigrok-cli
 libsigrokdecode4
+poppler-utils
