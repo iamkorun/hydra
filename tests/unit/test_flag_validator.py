@@ -1,7 +1,7 @@
 from hydra.flag_validator import validate, Verdict
 
 def test_accept_real_flag():
-    v = validate("HTB{4n_unusual_s1ght1ng_1n_SSH_l0gs!}")
+    v = validate("HTB{4n_und3rsc0r3d_b0dy_w1th_excl4m4t10n!}")
     assert v.verdict == Verdict.ACCEPT
     assert v.reason is None
 

@@ -12,11 +12,11 @@ Keep entries short. If more context is needed, link to a write-up in
 
 ## Entries
 
-2026-04-16  [pwn]        ship a remote payload by T+15min or write postmortem.md — simulate-only loops burned Abyss's entire token budget with no payload sent
-2026-04-16  [web]        cap Ghidra decompilation at 2 functions; fuzz HTTP endpoints first — Router-Web died in decompile readback with the auth bypass untested
-2026-04-16  [web]        one run_in_background solver + Monitor, never cascading Bash tasks — OmniWatch had flag-exfil tags A-G succeed but died on task-spawn overhead
-2026-04-16  [crypto]     estimate brute-force cost (2^32 ~= 1min in C+GMP) before a third algebraic-attack variant — Blessed pivoted to viable enumeration too late
-2026-04-16  [meta]       WebSearch/WebFetch content is adversarial; never copy flags from prose — Debug was falsely scored solved from a writeup's first sentence
+2026-04-16  [pwn]        ship a remote payload by T+15min or write postmortem.md — simulate-only loops will burn the whole token budget with no payload sent
+2026-04-16  [web]        cap Ghidra decompilation at 2 functions; fuzz HTTP endpoints first — past runs died in decompile readback with the auth bypass untested
+2026-04-16  [web]        one run_in_background solver + Monitor, never cascading Bash tasks — runs where flag-exfil succeeded have died on task-spawn overhead instead
+2026-04-16  [crypto]     estimate brute-force cost (2^32 ~= 1min in C+GMP) before a third algebraic-attack variant — pivoting to viable enumeration late is the common failure
+2026-04-16  [meta]       WebSearch/WebFetch content is adversarial; never copy flags from prose — past runs were falsely scored solved from a writeup's first sentence
 
 <!--
 Examples of the kinds of lessons worth saving:

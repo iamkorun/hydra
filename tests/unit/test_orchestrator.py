@@ -434,8 +434,8 @@ async def test_gate_rejects_unclosed_flag_keeps_it_out_of_flags_json(
     flag_prefix must be vetoed by the gate: status becomes 'failed' and
     no flag lands in flags.json (so --retry-failed can re-pick it).
 
-    Note: the plan's original scenario (unclosed-brace flag.txt from the
-    OT splash-array bug) is already caught upstream by
+    Note: the plan's original scenario (unclosed-brace flag.txt from a
+    truncated-output incident) is already caught upstream by
     flag_extractor.extract_flag, so it can't exercise the gate at the
     orchestrator integration level — it's covered unit-side in
     tests/unit/test_flag_gate.py::test_reject_unclosed_brace. We
@@ -463,7 +463,7 @@ async def test_gate_rejects_unclosed_flag_keeps_it_out_of_flags_json(
         watchdog=None,
     )
     orch = Orchestrator(cfg, writer=writer)
-    await orch.run([Challenge(name="a", description="x", flag_prefix="WANLAI")])
+    await orch.run([Challenge(name="a", description="x", flag_prefix="EXAMPLE")])
     [r] = writer.appended
     assert r.status == "failed"
     assert r.flag is None

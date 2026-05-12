@@ -1,8 +1,7 @@
 #!/bin/sh
 # analyzeHeadless wrapper: cap Ghidra invocations per container so the
 # agent cannot burn its token budget re-decompiling. Override with
-# GHIDRA_MAX_CALLS=N if you legitimately need more passes. See
-# phase-4 Router-Web postmortem.
+# GHIDRA_MAX_CALLS=N if you legitimately need more passes.
 set -eu
 
 GHIDRA_REAL="/opt/ghidra_12.0.4_PUBLIC/support/analyzeHeadless"

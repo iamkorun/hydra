@@ -6,7 +6,7 @@ ceiling, pause on infrastructure flaps, and stop before partial/wrong flags
 pollute `flags.json`. Goal: solve with minimum token burn, never silently
 record a bad flag.
 
-The user will paste or invoke this with a target JSON (e.g. `OT.json`,
+The user will paste or invoke this with a target JSON (e.g. `batch.json`,
 `phase-1.json`) and possibly per-stage IPs. Treat everything below as the
 standing protocol for the session.
 
@@ -119,7 +119,7 @@ wholesale — it's multi-MB and burns context:
 4. `jq -c 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use") | {n:.name, c:((.input.command // .input.file_path // (.input|tostring))[:140])}' <log> | tail -10` — last 10 tool-uses.
 5. `jq -c 'select(.type=="result") | {subtype,is_error,turns,cost:.total_cost_usd,terminal:.terminal_reason}' <log>` — end marker.
 6. `jq -rc 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash") | .input.command[:50]' <log> | sort | uniq -c | sort -rn | head` — spot repeated commands (loop signal).
-7. `jq -rc 'select(.type=="user") | .message.content[]? | select(.type=="tool_result") | (if (.content|type)=="string" then .content else .content[0].text // "" end)' <log> | grep -oE '<expected signals>' | sort | uniq -c | sort -rn | head` — progress signals (protocol-specific: "WANLAI{...}", "Read-Property", "session handle", etc.).
+7. `jq -rc 'select(.type=="user") | .message.content[]? | select(.type=="tool_result") | (if (.content|type)=="string" then .content else .content[0].text // "" end)' <log> | grep -oE '<expected signals>' | sort | uniq -c | sort -rn | head` — progress signals (protocol-specific: "FLAG{...}", "Read-Property", "session handle", etc.).
 8. `docker ps --format '{{.Names}} {{.Status}}' | grep hydra-` — container state.
 9. Re-probe the target port from the host — is the machine still alive?
 
@@ -220,7 +220,7 @@ but the machine may die in 20–30. Strategy:
 
 ## Example one-shot invocation
 
-User says: "run OT.json background, monitor, upgrade if stuck,
+User says: "run batch.json background, monitor, upgrade if stuck,
 kill if wrong, don't burn my budget".
 
 Response flow:

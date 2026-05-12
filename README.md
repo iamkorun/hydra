@@ -214,8 +214,8 @@ written to `flags.json`:
 
 Tighten the gate per-challenge in your JSON:
 ```
-{"name": "splash", "flag_prefix": "WANLAI",
- "expected_format": "WANLAI\\{[0-9a-f]{32}\\}"}
+{"name": "splash", "flag_prefix": "EXAMPLE",
+ "expected_format": "EXAMPLE\\{[0-9a-f]{32}\\}"}
 ```
 
 ## Development

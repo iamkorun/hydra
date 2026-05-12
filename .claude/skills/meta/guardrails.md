@@ -51,10 +51,10 @@ Specifically:
   you AND you've logged that in `./work/prior-knowledge.log` per
   `no-prior-knowledge.md`.
 
-The phase-3 "Debug" challenge was marked solved with the flag
-`HTB{. To make reading easier, the view is switched...}` — the literal
-opening sentence of an HTB writeup, pasted verbatim by the agent.
-Don't repeat this.
+Past prompt-injection failure: a challenge was marked solved with the
+flag `flag{. To make reading easier, the view is switched...}` — the
+literal opening sentence of a writeup, pasted verbatim by the agent
+after `WebFetch`. Don't repeat this.
 
 ## Defenses (layered, cheap → expensive)
 

@@ -8,7 +8,7 @@ challenges are HNP in disguise:
 | Challenge shape | What's leaked | Typical unknown size |
 |---|---|---|
 | ECDSA nonce reuse / biased nonces | top bits of `k` per signature | 2^64–2^128 total across 30+ signatures |
-| EC point RNG disclosure (Blessed-class) | top bits of point x-coord | 2^32–2^48 per point |
+| EC point RNG disclosure | top bits of point x-coord | 2^32–2^48 per point |
 | RSA partial plaintext | top or bottom bits of `m` | 2^128–2^256 (needs Coppersmith) |
 | Debiased LCG / MT state | low bits of state | 2^32–2^64 |
 
@@ -33,7 +33,7 @@ search space fits, this is the fastest route — no fiddly matrix
 parameters to tune, no "the lattice didn't reduce enough" failure
 mode.
 
-For Blessed-class ECC leaks: replace `P_STR`, `A_STR`, `B_STR` with
+For EC-point-RNG-disclosure leaks: replace `P_STR`, `A_STR`, `B_STR` with
 the challenge curve, and `X_HIGH_STR` with the disclosed top bits.
 Compile with `-O3 -march=native -lgmp`. A 2^32 scan takes ~4 min.
 
@@ -41,9 +41,9 @@ Compile with `-O3 -march=native -lgmp`. A 2^32 scan takes ~4 min.
 samples. Write a short Python + `pwntools.remote` or raw socket
 loop that records every disclosed sample into a `./work/samples.json`
 file. **Do this before any attack code** — you can't recover what
-you haven't observed. The phase-3 + phase-4 Blessed failures both
-had the attack infrastructure ready but never collected a single
-remote sample.
+you haven't observed. Past HNP-class runs failed not from wrong
+attack but because the attack infrastructure was ready but no remote
+sample was ever collected.
 
 ```python
 # ./work/collect.py — template

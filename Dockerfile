@@ -66,7 +66,7 @@ RUN apt-get update \
 
 # analyzeHeadless wrapper: caps the number of Ghidra calls per
 # container to prevent the agent from burning token budget on
-# re-decompilation loops (see phase-4 Router-Web postmortem).
+# re-decompilation loops.
 COPY docker/ghidra-wrapper.sh /usr/local/bin/analyzeHeadless
 RUN chmod +x /usr/local/bin/analyzeHeadless
 

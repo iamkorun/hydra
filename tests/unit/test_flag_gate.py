@@ -25,8 +25,9 @@ def test_accept_well_formed_flag(workdir):
 
 
 def test_reject_unclosed_brace(workdir):
-    # Real case from OT splash-array: `WANLAI{d0f2c4aa536a0d0ab`.
-    v = check("WANLAI{d0f2c4aa536a0d0ab", _ch(flag_prefix="WANLAI"), workdir)
+    # Regression: an agent emitted a flag candidate with no closing
+    # brace (truncated output). Gate must REJECT not WARN.
+    v = check("EXAMPLE{abc123def456", _ch(flag_prefix="EXAMPLE"), workdir)
     assert v.verdict == Verdict.REJECT
     assert "brace" in v.reason.lower()
 
@@ -39,8 +40,8 @@ def test_reject_wrong_prefix(workdir):
 
 def test_reject_expected_format_mismatch(workdir):
     v = check(
-        "WANLAI{zzz}",
-        _ch(expected_format=r"WANLAI\{[0-9a-f]{32}\}"),
+        "EXAMPLE{zzz}",
+        _ch(expected_format=r"EXAMPLE\{[0-9a-f]{32}\}"),
         workdir,
     )
     assert v.verdict == Verdict.REJECT

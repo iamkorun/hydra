@@ -20,8 +20,8 @@ Automated scanners are powerful but noisy — running sqlmap for 10 minutes when
 # Second principle: fuzz endpoints before reversing binaries
 
 Web challenges are won at the HTTP boundary — auth bypass, parameter
-injection, SSTI, SSRF, LFI. If the challenge ships an ELF (as Router-Web
-did), your first question is "does the flag live behind an unauthed
+injection, SSTI, SSRF, LFI. If the challenge ships an ELF alongside a
+web app, your first question is "does the flag live behind an unauthed
 endpoint I haven't tried yet?" not "what does `parse_mac_addr` compile
 to in Ghidra?"
 
@@ -47,9 +47,9 @@ If your `solve.py` needs to wait on a remote bot/queue/callback,
 structure it as **one** `run_in_background: true` invocation with a
 generous internal deadline (300–900s), then use the `Monitor` tool to
 watch its stdout. Do not spawn a new `Bash` task each time you want
-to check progress — that cascading pattern is how OmniWatch died
-in phase-3 with the flag tags already exfiltrated but the session
-killed at token limit during its 11th re-poll.
+to check progress — that cascading polling pattern has killed prior
+runs where the attack chain succeeded (flag tags already exfiltrated)
+but the session ran out of token budget on its Nth re-poll.
 
 Concretely:
 - `Bash(run_in_background=true)` → start solver once

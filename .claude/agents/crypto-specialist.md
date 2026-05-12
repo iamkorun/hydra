@@ -128,7 +128,7 @@ different parameters", pivot.
 - `exploits/crypto/ecc_hnp_search.c` — C + GMP brute-forcer with Jacobi
   on-curve prefilter (~60 ns/candidate, so 2^32 scan completes in
   ~4 minutes). Applies whenever a challenge leaks top bits of an EC
-  x-coordinate (Blessed-class); the same template pattern adapts to
+  x-coordinate (EC-point-RNG-disclosure class); the same template pattern adapts to
   RSA partial-bit disclosures and ECDSA nonce leaks by replacing the
   on-curve check with the relevant congruence.
 - See `.claude/skills/crypto/hnp-attacks.md` for the full HNP decision

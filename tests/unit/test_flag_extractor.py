@@ -66,11 +66,12 @@ def test_reject_flag_with_url_in_body(tmp_path: Path):
     assert flag is None
 
 def test_accept_realistic_htb_flag(tmp_path: Path):
-    # Regression: the real HTB flag from Silicon-Data-Sleuthing
+    # Regression: flag body with apostrophe, leet-speak, '!!', and a
+    # 32-hex suffix — exercises the realistic-shape acceptance path.
     (tmp_path / "flag.txt").write_text("")
-    stdout = "FLAG: HTB{Y0u'v3_m4st3r3d_0p3nWRT_d4t4_3xtr4ct10n!!_9887c2f5e4734bb64246276ddb70a34d}"
+    stdout = "FLAG: HTB{th15_1s_4_pl4us1bl3_l0ng_fl4g_w1th_punctu4t10n!!_0123456789abcdef0123456789abcdef}"
     flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
-    assert flag == "HTB{Y0u'v3_m4st3r3d_0p3nWRT_d4t4_3xtr4ct10n!!_9887c2f5e4734bb64246276ddb70a34d}"
+    assert flag == "HTB{th15_1s_4_pl4us1bl3_l0ng_fl4g_w1th_punctu4t10n!!_0123456789abcdef0123456789abcdef}"
 
 # Phase-4 false-positive regressions.
 
@@ -106,9 +107,9 @@ def test_accept_realistic_short_flag_with_digits(tmp_path: Path):
 
 def test_accept_real_htb_underscored_flag(tmp_path: Path):
     (tmp_path / "flag.txt").write_text("")
-    stdout = "FLAG: HTB{4n_unusual_s1ght1ng_1n_SSH_l0gs!}"
+    stdout = "FLAG: HTB{4n_und3rsc0r3d_b0dy_w1th_excl4m4t10n!}"
     flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)
-    assert flag == "HTB{4n_unusual_s1ght1ng_1n_SSH_l0gs!}"
+    assert flag == "HTB{4n_und3rsc0r3d_b0dy_w1th_excl4m4t10n!}"
 
 def test_accept_single_word_training_flag(tmp_path: Path):
     # Regression: easy/training challenges do have single-word flags.
@@ -119,7 +120,7 @@ def test_accept_single_word_training_flag(tmp_path: Path):
 
 def test_regex_sweep_no_longer_accepts_bare_stdout(tmp_path: Path):
     # flag.txt empty, no `FLAG:` line — stdout contains HTB{...} only in
-    # prose. Must return None (the phase-4 Blessed/Router-Web failure).
+    # prose. Must return None (a recurring false-positive failure mode).
     (tmp_path / "flag.txt").write_text("")
     stdout = "Challenge README says: format is HTB{real_flag_here}"
     flag = extract_flag(flag_file=tmp_path / "flag.txt", stdout=stdout)

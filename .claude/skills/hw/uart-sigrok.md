@@ -3,8 +3,7 @@
 When a challenge ships a `.sal` (Saleae Logic 2) capture — typically
 UART boot logs for hardware challenges — use `sigrok-cli` with its
 built-in protocol decoders. Manual binary parsing of the Saleae format
-burns tokens fast and OOM-kills the container (see phase-3 and phase-4
-Debug postmortems).
+burns tokens fast and OOM-kills the container.
 
 ## The .sal format, briefly
 

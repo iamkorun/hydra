@@ -36,7 +36,7 @@ def extract_flag(*, flag_file: Path, stdout: str) -> str | None:
     We deliberately do NOT sweep all of stdout with a generic
     `PREFIX{body}` regex: that accepts README format specs, decoy
     strings baked into challenge binaries by authors, and agent
-    source-code f-string literals as flags. See phase-4 postmortem.
+    source-code f-string literals as flags.
     """
     # Priority 1: flag.txt (the explicit derivation signal).
     if flag_file.exists():
