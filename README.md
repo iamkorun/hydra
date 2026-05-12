@@ -224,7 +224,3 @@ Tighten the gate per-challenge in your JSON:
 .venv/bin/pytest                # 131 tests
 .venv/bin/python -m ruff check  # lint (E + F + B + UP rulesets)
 ```
-
-## Architecture
-
-See [`docs/superpowers/specs/2026-04-14-hydra-ctf-agent-design.md`](docs/superpowers/specs/2026-04-14-hydra-ctf-agent-design.md).
