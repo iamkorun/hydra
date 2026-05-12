@@ -37,3 +37,11 @@ Thumbs.db
 # Ralph Loop local state
 .claude/ralph-loop.local.md
 .claude/.ralph-loop.local.md
+
+# Per-session dev scratch (audit/iteration progress)
+.claude/.*.md
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+
+# Playwright MCP cache
+.playwright-mcp/
