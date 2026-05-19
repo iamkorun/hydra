@@ -47,3 +47,6 @@ Thumbs.db
 
 # Playwright MCP cache
 .playwright-mcp/
+
+# Local-only scratch / launch status / private notes
+.local/
