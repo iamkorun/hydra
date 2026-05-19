@@ -1,6 +1,6 @@
 # Hydra
 
-![license](https://img.shields.io/badge/license-MIT-blue) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![runtime](https://img.shields.io/badge/runtime-Claude%20Code-orange) ![supervision](https://img.shields.io/badge/supervision-3--layer-brightgreen)
+[![CI](https://github.com/iamkorun/hydra/actions/workflows/ci.yml/badge.svg)](https://github.com/iamkorun/hydra/actions/workflows/ci.yml) ![license](https://img.shields.io/badge/license-MIT-blue) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![runtime](https://img.shields.io/badge/runtime-Claude%20Code-orange) ![supervision](https://img.shields.io/badge/supervision-3--layer-brightgreen)
 
 **Autonomous CTF batch solver.** JSON in, flags out.
 
