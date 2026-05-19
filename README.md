@@ -1,5 +1,7 @@
 # Hydra
 
+![license](https://img.shields.io/badge/license-MIT-blue) ![python](https://img.shields.io/badge/python-3.12%2B-blue) ![runtime](https://img.shields.io/badge/runtime-Claude%20Code-orange) ![supervision](https://img.shields.io/badge/supervision-3--layer-brightgreen)
+
 **Autonomous CTF batch solver.** JSON in, flags out.
 
 ```
@@ -10,12 +12,20 @@ hydra challenges.json
 #
 # solved 42/50 in 48m21s → ./flags.json
 ```
+*(flags above are illustrative)*
+
+**Built for** CTF players who want to clear a category overnight,
+researchers benchmarking agent capability across pwn/crypto/web/rev/forensics/misc,
+and tool builders studying how to keep long-running LLM agents on-track.
 
 Each challenge runs in its own Docker container with Claude Code inside.
-Claude triages the category (pwn / crypto / web / rev / forensics / misc),
-dispatches to a specialist subagent, and writes the flag. Hydra harvests
-and aggregates across the whole batch — with live log streaming, automatic
-resume, and pass@k parallel attempts.
+A triage agent ([`CLAUDE.md`](CLAUDE.md)) classifies the category and dispatches
+to one of **7 specialist subagents** ([`.claude/agents/`](.claude/agents/)),
+which pull from **~30 attack-pattern playbooks**
+([`.claude/skills/`](.claude/skills/) — RSA / ECC / padding-oracle / LFI-to-RCE /
+prototype-pollution / volatility / anti-debug / …). Hydra harvests and
+aggregates across the whole batch — with live log streaming, automatic resume,
+and pass@k parallel attempts.
 
 **Three supervision layers** keep the agent honest:
 
@@ -29,7 +39,35 @@ resume, and pass@k parallel attempts.
    malformed or provenance-light candidates before they reach
    `flags.json`.
 
-See [Supervision](#supervision) for details.
+## Architecture
+
+```
+                    ┌── L1: operator babysit (separate Claude session)
+                    │       ScheduleWakeup 270s → jq logs → decision matrix
+                    │       codified in prompts/hydra-babysit.md
+                    │
+challenges.json     │
+       │            ▼
+       ▼      [hydra batch — running, monitored]
+┌─────────────┐
+│ orchestrator│ ── spawns N workers (--parallel)
+└──────┬──────┘
+       │
+       ▼
+┌──────────────────────────┐
+│ Docker container         │     ◀── L2: watchdog sidecar
+│                          │           (loop / OOM / cost / idle — 0 token)
+│  Claude Code (triage)    │
+│      └─ specialist agent │
+│         └─ flag.txt      │
+└──────────┬───────────────┘
+           │
+           ▼
+   flag_extractor ──▶ L3: flag_gate ──▶ flags.json + results.json
+                       (deterministic, 0 token)
+```
+
+See [Supervision](#supervision) for the matrix + signals.
 
 ## Prerequisites
 
@@ -268,9 +306,44 @@ Tighten the gate per-challenge in your JSON:
  "expected_format": "EXAMPLE\\{[0-9a-f]{32}\\}"}
 ```
 
+## What Hydra is not
+
+To be straight about scope:
+
+- **Not a CTF curriculum or learning tool.** It solves; it doesn't
+  teach. If you want to learn pwn, read the writeups in
+  [`notes/lessons-learned.md`](notes/lessons-learned.md) or the
+  skill playbooks under [`.claude/skills/`](.claude/skills/) — but
+  Hydra itself optimizes for *flag-out*, not *human-understands*.
+- **Not SOTA on the hardest challenges.** pass@k helps on flaky
+  ones, but the worker LLM is still the ceiling. Hard pwn / custom
+  crypto / multi-stage chains still benefit from a skilled human.
+- **Not cheap.** Per-challenge cost on `claude-opus-4-7` typically
+  lands in the $0.50 – $4 range depending on category and timeout.
+  The watchdog `cost_cap` defaults to $10/challenge — tune it.
+- **Not zero-config.** You assemble `challenges.json` yourself.
+  Hydra sniffs field names liberally, but it doesn't scrape CTF
+  platforms for you.
+- **Not affiliated with Anthropic.** Hydra uses Claude Code as the
+  worker runtime, but is a third-party project.
+- **Not a fleet hunter for bug bounty.** The
+  [`prompts/bb-babysit.md`](prompts/bb-babysit.md) playbook is
+  deliberately single-worker, supervised, scope-gated — because
+  unsupervised fleets get programs banned.
+
 ## Development
 
 ```bash
 .venv/bin/pytest
 .venv/bin/python -m ruff check  # lint (E + F + B + UP rulesets)
 ```
+
+## License & contributing
+
+MIT — see [LICENSE](LICENSE). Issues and PRs welcome at
+[github.com/iamkorun/hydra](https://github.com/iamkorun/hydra/issues).
+
+If you fork the supervision playbook for a different domain
+(red-team engagement, kaggle-style ML competition, etc.), please
+open an issue — the [`prompts/`](prompts/) directory is meant to
+collect these.
