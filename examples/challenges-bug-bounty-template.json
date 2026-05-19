@@ -1,0 +1,12 @@
+[
+  {
+    "name": "h1-bb-target",
+    "category": "web",
+    "description": "Hunt indirect prompt injection on target.example.com /api/agent endpoint. Scope per attached scope.json. Submit via attacker-controlled account only.",
+    "files": ["./scope.json", "./test-account.md"],
+    "hints": ["start with /api/agent fingerprinting", "use mitmproxy for traffic logging", "attacker test account in test-account.md"],
+    "remote": "https://target.example.com",
+    "expected_format": "writeup-only",
+    "flag_prefix": "(no flag — produces a candidate-finding.md, not a flag)"
+  }
+]

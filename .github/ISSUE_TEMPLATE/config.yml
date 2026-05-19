@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions
+    url: https://github.com/iamkorun/hydra/discussions
+    about: "Question about Hydra's design or usage? Start a discussion."
+  - name: Fork the supervision playbook
+    url: https://github.com/iamkorun/hydra/issues/new?template=playbook_fork.md
+    about: "Forked prompts/hydra-babysit.md for a different domain? Use the playbook-fork template."

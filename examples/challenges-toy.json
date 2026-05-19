@@ -1,0 +1,22 @@
+[
+  {
+    "name": "toy-rot13",
+    "category": "misc",
+    "description": "The flag is rot13-encoded inside this string. Decode it: synt{ebg13_jbexf_n_yvg}",
+    "expected_format": "flag\\{[a-z0-9_]+\\}",
+    "flag_prefix": "flag"
+  },
+  {
+    "name": "toy-b64",
+    "category": "misc",
+    "description": "Base64-decode this twice: WlhsS01HVklRWE5KYlVwd1ltMVNlbVJZVW1jOVBRPT0=. The result is the flag.",
+    "expected_format": "flag\\{[a-z0-9_]+\\}"
+  },
+  {
+    "name": "toy-strings",
+    "category": "rev",
+    "description": "Run `strings` on the attached file and look for the flag.",
+    "files": ["./hello-world"],
+    "expected_format": "flag\\{[a-z0-9_]+\\}"
+  }
+]

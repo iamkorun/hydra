@@ -86,6 +86,17 @@ docker build -t hydra-worker .        # 10–20 min on first build
 
 ## Quick start
 
+Try the toy challenges first — they exercise the full pipeline (orchestrator
++ watchdog + flag gate) in ~45 seconds and don't need a real CTF target:
+
+```bash
+hydra examples/challenges-toy.json
+```
+
+See [`examples/quickstart.md`](examples/quickstart.md) for a 5-minute walkthrough.
+
+For real CTF batches:
+
 ```bash
 # 1. Create challenges.json (see Input format below).
 # 2. Solve:
@@ -338,12 +349,22 @@ To be straight about scope:
 .venv/bin/python -m ruff check  # lint (E + F + B + UP rulesets)
 ```
 
+## Roadmap
+
+See [`ROADMAP.md`](ROADMAP.md). Headline items for v0.2: benchmark
+on InterCode-CTF, `hydra supervise` subcommand, per-category cost
+telemetry, and a "Hydra on Haiku" cheaper-supervisor variant.
+
 ## License & contributing
 
-MIT — see [LICENSE](LICENSE). Issues and PRs welcome at
-[github.com/iamkorun/hydra](https://github.com/iamkorun/hydra/issues).
+MIT — see [LICENSE](LICENSE). Read [`CONTRIBUTING.md`](CONTRIBUTING.md)
+before opening a PR; it lists what merges easily, what requires
+discussion, and what's out of scope. Issues and discussions live at:
+
+- 🐛 [Issues](https://github.com/iamkorun/hydra/issues) — bugs, features
+- 💬 [Discussions](https://github.com/iamkorun/hydra/discussions) — design questions, war stories, playbook forks
 
 If you fork the supervision playbook for a different domain
-(red-team engagement, kaggle-style ML competition, etc.), please
-open an issue — the [`prompts/`](prompts/) directory is meant to
-collect these.
+(red-team engagement, kaggle-style ML competition, scraping pipeline,
+etc.), please [open a playbook-fork issue](https://github.com/iamkorun/hydra/issues/new?template=playbook_fork.md)
+— the [`prompts/`](prompts/) directory is meant to collect these.
