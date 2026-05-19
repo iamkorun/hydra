@@ -17,6 +17,20 @@ dispatches to a specialist subagent, and writes the flag. Hydra harvests
 and aggregates across the whole batch — with live log streaming, automatic
 resume, and pass@k parallel attempts.
 
+**Three supervision layers** keep the agent honest:
+
+1. **Operator babysit** — a separate Claude session running the
+   [`prompts/hydra-babysit.md`](prompts/hydra-babysit.md) playbook
+   monitors the batch every 270s and acts on a decision matrix
+   (CONTINUE / KILL / UPGRADE / PAUSE).
+2. **Deterministic watchdog** — a sidecar per worker that catches
+   loop / OOM / cost-cap / idle failures without an LLM call.
+3. **Pre-commit flag gate** — `hydra/flag_gate.py` vetoes
+   malformed or provenance-light candidates before they reach
+   `flags.json`.
+
+See [Supervision](#supervision) for details.
+
 ## Prerequisites
 
 - Python 3.12+
@@ -174,12 +188,48 @@ Why it matters: without this, a specialist can score on a canonical challenge by
 recalling the answer instead of exploiting it, and collapse on any variant. The
 log turns silent shortcuts into an auditable signal.
 
-## Safety rails
+## Supervision
 
-Hydra ships two deterministic supervision layers. Both run per-worker,
-use zero tokens, and can be tuned via CLI flags.
+Hydra's failure modes split cleanly in two: **mechanical** (looping,
+OOM, runaway cost, malformed output) and **semantic** (wrong direction,
+hallucinated facts, scope drift, partial flags). The supervision stack
+is designed around that split.
 
-### Watchdog (sidecar)
+- **Mechanical failures** are caught by deterministic code — the
+  watchdog sidecar and the flag gate, both 0-token, both shipped in
+  this repo as Python.
+- **Semantic failures** are caught by a separate Claude session
+  running a codified operator playbook. The playbook lives in
+  [`prompts/hydra-babysit.md`](prompts/hydra-babysit.md) as a
+  versioned prompt — not as Python code — so it stays forkable and
+  domain-portable. A second playbook,
+  [`prompts/bb-babysit.md`](prompts/bb-babysit.md), applies the same
+  pattern to bug-bounty workflows.
+
+### Layer 1 — Operator babysit (LLM supervisor)
+
+A separate Claude Code session, primed with `prompts/hydra-babysit.md`,
+runs alongside the batch. The playbook gives it:
+
+- **Pre-flight gates** — verify the target's protocol handshake (not
+  just port-open) before launching a worker. Defends against IP
+  recycling on platforms that reuse boxes.
+- **Cheap-check loop** — `ScheduleWakeup` every 180–270s (prompt-cache
+  warm), then `jq`/`tail`/`stat` on the worker's jsonl to grade
+  progress without reading the full transcript.
+- **Decision matrix** — first-matching-row dispatch over
+  CONTINUE / KILL / UPGRADE (sonnet → opus) / PAUSE on signals like
+  *partial flag*, *target down*, *training-memory shortcut*,
+  *cost over cap*, *solver spam*.
+- **Scrub-before-commit** — if a partial / wrong flag was already
+  recorded, the supervisor scrubs `flags.json` + downgrades
+  `results.jsonl` so `--retry-failed` can re-pick the challenge.
+
+To use it: paste the playbook into a Claude Code session, tell it the
+challenges JSON + target IPs, and let it run. The worker is `hydra`
+itself; the supervisor never invokes the model directly.
+
+### Layer 2 — Watchdog (sidecar)
 
 Runs alongside each worker container and tails
 `runs/<name>/logs/claude.stdout.jsonl` for bad-behavior signals. Kills
@@ -200,7 +250,7 @@ Killed runs land in `results.jsonl` as `status: failed` with
 `--retry-failed` re-picks them.
 
 
-### Flag gate (pre-commit)
+### Layer 3 — Flag gate (pre-commit)
 
 Every flag candidate runs through `hydra/flag_gate.py` before being
 written to `flags.json`:
@@ -221,6 +271,6 @@ Tighten the gate per-challenge in your JSON:
 ## Development
 
 ```bash
-.venv/bin/pytest                # 131 tests
+.venv/bin/pytest
 .venv/bin/python -m ruff check  # lint (E + F + B + UP rulesets)
 ```
