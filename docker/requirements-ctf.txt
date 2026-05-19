@@ -17,7 +17,7 @@ cysignals==1.12.*
 fpylll==0.6.*
 flatter==0.0.3
 # Web — playwright for JS-heavy chals (needs `playwright install chromium`, done below in Dockerfile)
-playwright==1.48.*
+playwright==1.60.*
 # Reverse — python bytecode + binary parsing
 uncompyle6==3.9.*
 lief==0.17.*
